@@ -1,2 +1,2 @@
 # ViolinAI
-A tutur app for learning violin
+A tutor app for learning violin
