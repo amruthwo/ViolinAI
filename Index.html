@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Violin Falling Notes (PWA)</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#111111">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Violin Falling Notes</h1>
+    <p class="sub">Upload a MIDI → tap Start Mic → play each note to advance.</p>
+  </header>
+
+  <section class="controls">
+    <label class="file">
+      <span>Choose MIDI</span>
+      <input id="midiFile" type="file" accept=".mid,.midi" />
+    </label>
+
+    <button id="startBtn" disabled>Start Mic</button>
+
+    <div class="toggles">
+      <label><input id="waitMode" type="checkbox" checked> Wait mode (advance on correct pitch)</label>
+      <label>Tempo multiplier:
+        <input id="tempoMul" type="number" min="0.25" max="2" step="0.05" value="1.0">
+      </label>
+      <label>Pitch tolerance (cents):
+        <input id="tolCents" type="number" min="10" max="80" step="1" value="35">
+      </label>
+    </div>
+
+    <div class="status" id="status">
+      Load a MIDI file to begin.
+    </div>
+  </section>
+
+  <main class="stage">
+    <canvas id="canvas" width="900" height="520"></canvas>
+
+    <div class="readout">
+      <div><b>Target:</b> <span id="targetTxt">—</span></div>
+      <div><b>Heard:</b> <span id="heardTxt">—</span></div>
+      <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
+      <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
+    </div>
+  </main>
+
+  <!-- MIDI parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
+  <!-- Pitch detection -->
+  <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
+
+  <script src="app.js"></script>
+</body>
+</html>
