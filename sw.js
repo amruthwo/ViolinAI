@@ -1,9 +1,9 @@
-const CACHE = "violin-falling-notes-v3"; // bump again
+const CACHE = "violin-falling-notes-v4";
 const ASSETS = [
   "./",
   "./index.html",
-  "./style.css",
-  "./app.js",
+  "./style.css?v=4",
+  "./app.js?v=4",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
@@ -15,14 +15,10 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => {
-  e.waitUntil(
-    Promise.all([
-      caches.keys().then(keys =>
-        Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-      ),
-      self.clients.claim()
-    ])
-  );
+  e.waitUntil(Promise.all([
+    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))),
+    self.clients.claim()
+  ]));
 });
 
 self.addEventListener("fetch", (e) => {
