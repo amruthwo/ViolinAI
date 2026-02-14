@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,24 +14,52 @@
 <body>
   <header>
     <h1>Violin Falling Notes</h1>
-    <p class="sub">Upload a MIDI → tap Start Mic → play each note to advance.</p>
+    <p class="sub">Upload a MIDI → Preview (listen) or Learn (play-to-advance).</p>
   </header>
 
   <section class="controls">
-    <label class="file">
-      <span>Choose MIDI</span>
-      <input id="midiFile" type="file" accept=".mid,.midi" />
-    </label>
+    <div class="row">
+      <label class="file">
+        <span>Choose MIDI</span>
+        <input id="midiFile" type="file" accept=".mid,.midi" />
+      </label>
 
-    <button id="startBtn" disabled>Start Mic</button>
+      <button id="themeBtn" title="Toggle light/dark">🌙 Dark</button>
+    </div>
+
+    <div class="row">
+      <div class="seg" role="tablist" aria-label="Mode">
+        <button id="modePreview" class="segbtn active" type="button">Preview</button>
+        <button id="modeLearn" class="segbtn" type="button">Learn</button>
+      </div>
+
+      <div class="seg" role="tablist" aria-label="View">
+        <button id="viewFalling" class="segbtn active" type="button">Falling Notes</button>
+        <button id="viewSheet" class="segbtn" type="button">Sheet Music</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="previewPlayBtn" disabled>▶︎ Play</button>
+      <button id="previewPauseBtn" disabled>⏸ Pause</button>
+      <button id="previewStopBtn" disabled>⏹ Stop</button>
+
+      <button id="startMicBtn" disabled>🎙 Start Mic</button>
+    </div>
 
     <div class="toggles">
-      <label><input id="waitMode" type="checkbox" checked> Wait mode (advance on correct pitch)</label>
       <label>Tempo multiplier:
         <input id="tempoMul" type="number" min="0.25" max="2" step="0.05" value="1.0">
       </label>
-      <label>Pitch tolerance (cents):
+
+      <label id="learnOnlyA">
+        Pitch tolerance (cents):
         <input id="tolCents" type="number" min="10" max="80" step="1" value="35">
+      </label>
+
+      <label id="learnOnlyB">
+        <input id="waitMode" type="checkbox" checked>
+        Wait mode (advance only when correct)
       </label>
     </div>
 
@@ -41,7 +69,10 @@
   </section>
 
   <main class="stage">
-    <canvas id="canvas" width="900" height="520"></canvas>
+    <div class="canvasWrap">
+      <canvas id="canvas"></canvas>
+      <canvas id="sheetCanvas" class="hidden"></canvas>
+    </div>
 
     <div class="readout">
       <div><b>Target:</b> <span id="targetTxt">—</span></div>
