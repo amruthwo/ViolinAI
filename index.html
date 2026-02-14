@@ -9,12 +9,13 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=2" />
+  <!-- cache-bust to avoid stale SW assets during dev -->
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <header>
     <h1>Violin Falling Notes</h1>
-    <p class="sub">Upload a MIDI → Preview (listen) or Learn (play-to-advance).</p>
+    <p class="sub">Preview (listen) or Learn (play-to-advance). Toggle Falling + Sheet independently.</p>
   </header>
 
   <section class="controls">
@@ -33,9 +34,9 @@
         <button id="modeLearn" class="segbtn" type="button">Learn</button>
       </div>
 
-      <div class="seg" role="tablist" aria-label="View">
-        <button id="viewFalling" class="segbtn active" type="button">Falling Notes</button>
-        <button id="viewSheet" class="segbtn" type="button">Sheet Music</button>
+      <div class="checks">
+        <label><input id="showFalling" type="checkbox" checked> Show Falling</label>
+        <label><input id="showSheet" type="checkbox" checked> Show Sheet</label>
       </div>
     </div>
 
@@ -44,12 +45,29 @@
       <button id="previewPauseBtn" disabled>⏸ Pause</button>
       <button id="previewStopBtn" disabled>⏹ Stop</button>
 
+      <button id="testSoundBtn" disabled>🔊 Test Sound</button>
+
       <button id="startMicBtn" disabled>🎙 Start Mic</button>
+    </div>
+
+    <div class="row">
+      <button id="loopStartBtn" disabled>⟲ Set Loop Start</button>
+      <button id="loopEndBtn" disabled>⟳ Set Loop End</button>
+      <button id="loopClearBtn" disabled>✕ Clear Loop</button>
+      <span class="loopread" id="loopRead">Loop: off</span>
     </div>
 
     <div class="toggles">
       <label>Tempo multiplier:
         <input id="tempoMul" type="number" min="0.25" max="2" step="0.05" value="1.0">
+      </label>
+
+      <label>Count-in (beats):
+        <input id="countIn" type="number" min="0" max="8" step="1" value="4">
+      </label>
+
+      <label>Metronome during preview:
+        <input id="metroOn" type="checkbox">
       </label>
 
       <label id="learnOnlyA">
@@ -63,15 +81,13 @@
       </label>
     </div>
 
-    <div class="status" id="status">
-      Load a MIDI file to begin.
-    </div>
+    <div class="status" id="status">Load a MIDI file to begin.</div>
   </section>
 
   <main class="stage">
     <div class="canvasWrap">
       <canvas id="canvas"></canvas>
-      <canvas id="sheetCanvas" class="hidden"></canvas>
+      <canvas id="sheetCanvas"></canvas>
     </div>
 
     <div class="readout">
@@ -79,14 +95,12 @@
       <div><b>Heard:</b> <span id="heardTxt">—</span></div>
       <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
       <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
+      <div><b>Key:</b> <span id="keyTxt">—</span></div>
     </div>
   </main>
 
-  <!-- MIDI parsing -->
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
-  <!-- Pitch detection -->
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
