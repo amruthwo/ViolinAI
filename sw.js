@@ -1,4 +1,4 @@
-const CACHE = "violin-falling-notes-v1";
+const CACHE = "violin-falling-notes-v2"; // <-- bumped
 const ASSETS = [
   "./",
   "./index.html",
