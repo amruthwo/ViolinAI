@@ -1,4 +1,4 @@
-# Falling Notes Violin
+# Violin Falling Notes
 *A minimal tutor app for learning violin*
 
 **Features**
