@@ -2,11 +2,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
-.svg-sprite{
-  position:absolute;
-  width:0; height:0;
-  overflow:hidden;
-}
+.svg-sprite{ position:absolute; width:0; height:0; overflow:hidden; }
 
 /* ---- Base palette ---- */
 html[data-theme="dark"]{
@@ -14,7 +10,6 @@ html[data-theme="dark"]{
   --text:#f2f4ff;
   --muted:rgba(242,244,255,0.72);
 
-  /* Loud accents */
   --accent:#5b8cff;
   --accent2:#ff39c8;
   --accent3:#2dffb5;
@@ -52,7 +47,7 @@ html[data-theme="light"]{
   --blur: 14px;
 }
 
-/* ---- Design: Classic (simple) ---- */
+/* ---- Design: Classic ---- */
 html[data-design="classic"]{
   --surface: color-mix(in srgb, var(--bg) 92%, #ffffff10);
   --surface2: color-mix(in srgb, var(--bg) 88%, #ffffff12);
@@ -66,53 +61,55 @@ html[data-design="classic"]{
 
   --chipBg: color-mix(in srgb, var(--surface2) 85%, transparent);
   --chipBorder: color-mix(in srgb, var(--text) 14%, transparent);
+
+  --bgFX:
+    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 14%, transparent), transparent 70%),
+    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%);
 }
 
-/* ---- Design: Material 3-ish (LOUD) ---- */
+/* ---- Design: Material 3-ish (FLAT + PASTEL + BLOBS) ---- */
 html[data-design="material"]{
-  --surface: color-mix(in srgb, var(--bg) 88%, #ffffff16);
-  --surface2: color-mix(in srgb, var(--bg) 82%, #ffffff22);
+  --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
+  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff18);
   --border: color-mix(in srgb, var(--text) 12%, transparent);
 
-  --btnFill: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent2) 65%, var(--accent)));
+  /* flatter filled/tonal (no Apple-esque gradients) */
+  --btnFill: var(--accent);
   --btnFillText:#fff;
 
-  --btnTonal: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 24%, var(--surface2)),
-    color-mix(in srgb, var(--accent3) 18%, var(--surface2))
-  );
+  --btnTonal: color-mix(in srgb, var(--accent) 18%, var(--surface2));
   --btnTonalText: var(--text);
 
   --btnGhost: transparent;
 
-  --chipBg: color-mix(in srgb, var(--accent) 14%, var(--surface2));
-  --chipBorder: color-mix(in srgb, var(--accent) 30%, transparent);
+  --chipBg: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+  --chipBorder: color-mix(in srgb, var(--accent) 26%, transparent);
 
-  --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent2) 28%, transparent);
+  --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
 
+  /* pastel families + bubbly blobs */
   --bgFX:
-    radial-gradient(900px 650px at 10% -10%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent3) 26%, transparent), transparent 70%),
-    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent2) 22%, transparent), transparent 70%);
+    radial-gradient(520px 420px at 14% 8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+    radial-gradient(520px 420px at 86% 16%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
+    radial-gradient(620px 520px at 60% 108%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 70%),
+    radial-gradient(420px 360px at 48% 44%, color-mix(in srgb, var(--accent4) 12%, transparent), transparent 70%);
 }
 
-/* ---- Design: Liquid Glass (LOUD + iridescent) ---- */
+/* ---- Design: Liquid Glass (IRIDESCENT + SHIMMER) ---- */
 html[data-design="liquid"]{
   --surface: color-mix(in srgb, #ffffff22 36%, var(--bg));
   --surface2: color-mix(in srgb, #ffffff28 40%, var(--bg));
   --border: color-mix(in srgb, #ffffff30 55%, transparent);
 
   --btnFill: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 90%, #ffffff30),
-    color-mix(in srgb, var(--accent2) 75%, #ffffff20),
-    color-mix(in srgb, var(--accent3) 55%, #ffffff10)
+    color-mix(in srgb, var(--accent) 92%, #ffffff30),
+    color-mix(in srgb, var(--accent2) 78%, #ffffff20),
+    color-mix(in srgb, var(--accent3) 60%, #ffffff10)
   );
   --btnFillText:#fff;
 
-  --btnTonal: linear-gradient(135deg,
-    color-mix(in srgb, #ffffff20 70%, transparent),
-    color-mix(in srgb, var(--accent2) 18%, transparent)
-  );
+  --btnTonal: color-mix(in srgb, #ffffff18 65%, transparent);
   --btnTonalText: var(--text);
 
   --btnGhost: color-mix(in srgb, #ffffff16 55%, transparent);
@@ -125,18 +122,18 @@ html[data-design="liquid"]{
 
   --bgFX:
     radial-gradient(900px 650px at 8% -10%, color-mix(in srgb, var(--accent2) 28%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 98% 10%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 98% 10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
     radial-gradient(900px 650px at 45% 120%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
     conic-gradient(from 210deg at 50% 0%,
-      color-mix(in srgb, var(--accent) 18%, transparent),
+      color-mix(in srgb, var(--accent) 16%, transparent),
       color-mix(in srgb, var(--accent2) 18%, transparent),
-      color-mix(in srgb, var(--accent3) 16%, transparent),
-      color-mix(in srgb, var(--accent4) 16%, transparent),
-      color-mix(in srgb, var(--accent) 18%, transparent)
+      color-mix(in srgb, var(--accent3) 14%, transparent),
+      color-mix(in srgb, var(--accent4) 14%, transparent),
+      color-mix(in srgb, var(--accent) 16%, transparent)
     );
 }
 
-/* Auto gets resolved by JS, but safe defaults */
+/* Auto (resolved by JS) */
 html[data-design="auto"]{
   --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
   --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
@@ -176,11 +173,7 @@ body{
   background: var(--bgFX), var(--bg);
 }
 
-.app{
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto 1fr;
-}
+.app{ height: 100%; display: grid; grid-template-rows: auto 1fr; }
 
 /* ---- Topbar ---- */
 .topbar{
@@ -194,45 +187,25 @@ body{
 }
 html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 
-.brand{
-  display:flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-}
+.brand{ display:flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .title{ font-weight: 1000; letter-spacing: 0.2px; }
 .subtitle{ font-size: 12.5px; color: var(--muted); }
 
-/* ---- Transport: bigger, flex-fill ---- */
-.transport{
-  margin-top: 10px;
-  display:flex;
-  align-items:center;
-  gap: 10px;
-}
+/* ---- Transport ---- */
+.transport{ margin-top: 10px; display:flex; align-items:center; gap: 10px; }
 
-/* buttons become equal-width pill tiles */
 .btn-icon{
   flex: 1 1 0;
   min-width: 56px;
-  height: 66px;              /* ~50% larger than earlier */
+  height: 66px;
   padding: 0;
   display:flex;
   align-items:center;
   justify-content:center;
 }
+.btn-icon svg{ width: 34px; height: 34px; fill: currentColor; }
 
-.btn-icon svg{
-  width: 34px;
-  height: 34px;
-  fill: currentColor;
-}
-
-/* gear stays compact but still large enough */
-.btn-gear{
-  flex: 0 0 auto;
-  width: 66px;
-}
+.btn-gear{ flex: 0 0 auto; width: 66px; }
 
 /* ---- Surfaces ---- */
 .status, .readout, .settings, .panel{
@@ -240,67 +213,47 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
   border-radius: var(--radius2);
   background: var(--surface);
 }
-
 html[data-design="liquid"] .status,
 html[data-design="liquid"] .readout,
 html[data-design="liquid"] .settings,
-html[data-design="liquid"] .panel{
-  box-shadow: var(--shadow2), var(--glassEdge);
-}
+html[data-design="liquid"] .panel{ box-shadow: var(--shadow2), var(--glassEdge); }
 html[data-design="material"] .status,
 html[data-design="material"] .readout,
 html[data-design="material"] .settings,
-html[data-design="material"] .panel{
-  box-shadow: var(--shadow1);
-}
+html[data-design="material"] .panel{ box-shadow: var(--shadow1); }
 
-.settings{
-  margin-top: 10px;
-  padding: 12px;
-}
-
-.settingsGrid{
-  display:grid;
-  gap: 10px;
-}
+.settings{ margin-top: 10px; padding: 12px; }
+.settingsGrid{ display:grid; gap: 10px; }
 @media (min-width: 860px){
-  .settingsGrid{
-    grid-template-columns: 1.2fr 1fr 1fr 1fr;
-    align-items: center;
-  }
+  .settingsGrid{ grid-template-columns: 1.2fr 1fr 1fr 1fr; align-items: center; }
 }
 
-/* ---- Stage grid ---- */
-.stageGrid{
-  padding: 14px;
-  display: grid;
-  gap: 14px;
-  align-content: start;
-}
-@media (min-width: 900px){
-  .stageGrid{ grid-template-columns: 1fr 1fr; padding: 16px; }
-}
+/* ---- Stage ---- */
+.stageGrid{ padding: 14px; display:grid; gap: 14px; align-content: start; }
+@media (min-width: 900px){ .stageGrid{ grid-template-columns: 1fr 1fr; padding: 16px; } }
 
 .panel{ overflow:hidden; }
 .panelHdr{
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--surface2) 85%, transparent),
-    color-mix(in srgb, var(--accent2) 10%, transparent)
-  );
+  background: color-mix(in srgb, var(--surface2) 92%, transparent);
 }
+html[data-design="material"] .panelHdr{
+  background:
+    radial-gradient(200px 140px at 18% 30%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--surface2) 92%, transparent);
+}
+html[data-design="liquid"] .panelHdr{
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface2) 85%, transparent), color-mix(in srgb, var(--accent2) 12%, transparent));
+}
+
 .panelTitle{ font-weight: 1000; }
 .panelHint{ font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-canvas{
-  width: 100%;
-  height: auto;
-  display:block;
-  background: var(--canvas);
-}
+canvas{ width: 100%; height: auto; display:block; background: var(--canvas); }
 
-/* ---- Unified controls ---- */
+/* ---- Buttons ---- */
 .btn{
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -309,6 +262,7 @@ canvas{
   background: color-mix(in srgb, var(--surface2) 70%, transparent);
   transition: transform .06s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
   line-height: 1;
+  position: relative;
 }
 .btn:active{ transform: translateY(1px); }
 .btn:disabled{ opacity: .55; }
@@ -316,25 +270,100 @@ canvas{
 .btn-primary{
   background: var(--btnFill);
   color: var(--btnFillText);
-  border-color: color-mix(in srgb, var(--accent2) 30%, transparent);
+  border-color: color-mix(in srgb, var(--accent2) 26%, transparent);
   box-shadow: 0 14px 34px color-mix(in srgb, var(--accent2) 20%, transparent);
+}
+html[data-design="material"] .btn-primary{
+  /* flatter M3 elevation */
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 html[data-design="liquid"] .btn-primary{
   box-shadow: var(--glow), 0 18px 40px rgba(0,0,0,0.35);
 }
 
-.btn-tonal{
-  background: var(--btnTonal);
-  color: var(--btnTonalText);
-}
-.btn-ghost{
-  background: var(--btnGhost);
+.btn-tonal{ background: var(--btnTonal); color: var(--btnTonalText); }
+.btn-ghost{ background: var(--btnGhost); }
+
+/* Standard pill button size for Practice/Timing controls */
+.btn-pill{
+  height: 40px;
+  padding: 0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  border-radius: 999px;
 }
 
-/* Material-ish shapes slightly less bubbly */
-html[data-design="material"] .btn{
-  border-radius: 18px;
+/* Checkbox pills styled like buttons */
+.btn.chiplike{
+  height: 40px;
+  padding: 0 12px;
+  display:inline-flex;
+  align-items:center;
+  gap: 10px;
+  user-select: none;
 }
+.btn.chiplike input{
+  transform: translateY(1px);
+}
+
+/* ---- Material Ripple ---- */
+.ripple{
+  overflow:hidden;
+}
+.ripple-ink{
+  position:absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  pointer-events:none;
+  opacity: 0.35;
+  animation: ripple 550ms ease-out;
+  background: currentColor;
+}
+html[data-design="material"] .ripple-ink{
+  opacity: 0.25;
+}
+html[data-design="liquid"] .ripple-ink{
+  opacity: 0.18;
+}
+@keyframes ripple{
+  to{
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* ---- Liquid shimmer sweep (primary buttons) ---- */
+html[data-design="liquid"] .btn-primary::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  border-radius: inherit;
+  background: linear-gradient(110deg,
+    transparent 0%,
+    rgba(255,255,255,0.00) 35%,
+    rgba(255,255,255,0.35) 50%,
+    rgba(255,255,255,0.00) 65%,
+    transparent 100%
+  );
+  transform: translateX(-140%);
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  pointer-events:none;
+  animation: shimmer 3.2s ease-in-out infinite;
+}
+html[data-design="liquid"] .btn-primary:disabled::before{
+  animation: none;
+  opacity: 0;
+}
+@keyframes shimmer{
+  0%, 55% { transform: translateX(-140%); }
+  75%     { transform: translateX(140%); }
+  100%    { transform: translateX(140%); }
+}
+
+/* ---- Material-ish focus ring ---- */
 html[data-design="material"] .btn:focus-visible{
   outline: none;
   box-shadow: var(--m3Ring);
@@ -345,8 +374,6 @@ html[data-design="material"] .btn:focus-visible{
   display:inline-flex;
   align-items:center;
   gap: 8px;
-  padding: 9px 12px;
-  border-radius: 999px;
   border: 1px solid var(--chipBorder);
   background: var(--chipBg);
   font-size: 13px;
@@ -354,12 +381,13 @@ html[data-design="material"] .btn:focus-visible{
   font-weight: 900;
 }
 .chip input{ transform: translateY(1px); }
-
-.toggleRow{
-  display:flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.chip-pill{
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
 }
+
+.toggleRow{ display:flex; flex-wrap: wrap; gap: 8px; align-items:center; }
 
 /* ---- File picker ---- */
 .filePick{
@@ -371,16 +399,10 @@ html[data-design="material"] .btn:focus-visible{
   border: 1px solid var(--border);
   background: var(--surface2);
 }
-.filePick span{
-  font-weight: 1000;
-  color: var(--muted);
-}
-.filePick input{
-  width: 280px;
-  max-width: 62vw;
-}
+.filePick span{ font-weight: 1000; color: var(--muted); }
+.filePick input{ width: 280px; max-width: 62vw; }
 
-/* ---- Segmented (FIXED equal width) ---- */
+/* ---- Segmented ---- */
 .seg{
   display:flex;
   width: 100%;
@@ -398,22 +420,21 @@ html[data-design="material"] .btn:focus-visible{
   color: var(--text);
   font-weight: 1000;
   text-align:center;
+  position: relative;
 }
 .segbtn.active{
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent) inset;
+}
+html[data-design="liquid"] .segbtn.active{
   background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 38%, transparent),
-    color-mix(in srgb, var(--accent2) 24%, transparent)
+    color-mix(in srgb, var(--accent) 30%, transparent),
+    color-mix(in srgb, var(--accent2) 18%, transparent)
   );
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent2) 35%, transparent) inset;
 }
 
 /* ---- Select row ---- */
-.selectRow{
-  display:flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items:center;
-}
+.selectRow{ display:flex; flex-wrap: wrap; gap: 10px; align-items:center; }
 .select{
   display:flex;
   align-items:center;
@@ -423,11 +444,7 @@ html[data-design="material"] .btn:focus-visible{
   border: 1px solid var(--border);
   background: var(--surface2);
 }
-.select span{
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 1000;
-}
+.select span{ font-size: 13px; color: var(--muted); font-weight: 1000; }
 .select select{
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface2) 70%, transparent);
@@ -438,20 +455,8 @@ html[data-design="material"] .btn:focus-visible{
 }
 
 /* ---- Status + readout ---- */
-.status{
-  margin-top: 10px;
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.readout{
-  margin-top: 10px;
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 13px;
-  display:grid;
-  gap: 4px;
-}
+.status{ margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.readout{ margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 13px; display:grid; gap: 4px; }
 
 /* ---- Advanced ---- */
 .advanced{
@@ -468,13 +473,9 @@ html[data-design="material"] .btn:focus-visible{
   opacity: 0.95;
   margin: 0 0 10px;
 }
-.row{
-  display:flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items:center;
-}
-.row-tight{ gap: 8px; }
+.row{ display:flex; flex-wrap: wrap; gap: 10px; align-items:center; }
+.row-tight{ gap: 8px; align-items: center; }
+
 .inline{
   display:inline-flex;
   align-items:center;
@@ -491,43 +492,35 @@ html[data-design="material"] .btn:focus-visible{
   background: color-mix(in srgb, var(--surface2) 75%, transparent);
   color: var(--text);
   font-weight: 1000;
+  height: 40px;
 }
 
 .pill{
+  height: 40px;
+  display:inline-flex;
+  align-items:center;
   font-size: 13px;
   color: var(--muted);
-  padding: 6px 12px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface2) 80%, transparent);
 }
 
-.loopRow{
-  display:flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items:center;
-}
+.loopRow{ display:flex; flex-wrap: wrap; gap: 8px; align-items:center; }
 
 .tempoBox{
   display:inline-flex;
   align-items:center;
   gap: 8px;
-  padding: 8px 10px;
+  height: 40px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface2) 80%, transparent);
 }
-.tempoBox .label{
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 1000;
-}
-.tempoVal{
-  min-width: 62px;
-  text-align:center;
-  font-weight: 1000;
-}
+.tempoBox .label{ font-size: 13px; color: var(--muted); font-weight: 1000; }
+.tempoVal{ min-width: 62px; text-align:center; font-weight: 1000; }
 
 /* Mobile */
 @media (max-width: 520px){
