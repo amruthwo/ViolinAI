@@ -1,26 +1,41 @@
-const CACHE = "violin-falling-notes-v12.1";
+const CACHE = "violinai-v13";
 const ASSETS = [
   "./",
   "./index.html",
-  "./style.css?v=12",
-  "./app.js?v=12.1",
-  "./manifest.webmanifest",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./app.js?v=13",
 ];
 
-self.addEventListener("install", (e) => {
-  self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
 });
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(Promise.all([
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))),
-    self.clients.claim()
-  ]));
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => (k === CACHE ? null : caches.delete(k))));
+      await self.clients.claim();
+    })()
+  );
 });
 
-self.addEventListener("fetch", (e) => {
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (url.origin !== location.origin) return; // don't cache CDN libs
+
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+
+      const res = await fetch(event.request);
+      if (event.request.method === "GET" && res.ok) {
+        cache.put(event.request, res.clone()).catch(() => {});
+      }
+      return res;
+    })()
+  );
 });
