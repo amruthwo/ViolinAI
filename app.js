@@ -179,7 +179,7 @@
     document.documentElement.setAttribute("data-theme", theme);
     themeBtn.textContent = theme==="dark" ? "🌙 Dark" : "☀️ Light";
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f6f7ff");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f4f6ff");
     drawFalling(); drawSheet();
   }
 
@@ -258,7 +258,7 @@
     return {
       bg:s.getPropertyValue("--canvas").trim(),
       lane:s.getPropertyValue("--lane").trim(),
-      stroke:s.getPropertyValue("--border").trim() || s.getPropertyValue("--stroke")?.trim() || "rgba(255,255,255,0.2)",
+      stroke:s.getPropertyValue("--border").trim() || "rgba(255,255,255,0.2)",
       text:s.getPropertyValue("--text").trim(),
       muted:s.getPropertyValue("--muted").trim(),
       accent:s.getPropertyValue("--accent").trim()
@@ -536,7 +536,6 @@
 
       setStatus(`Loaded ${notes.length} notes from ${srcTxt.textContent}. BPM≈${Math.round(bpm)}.`);
 
-      // Nice mobile behavior: auto-collapse settings after load
       if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
         setSettingsOpen(false);
       }
@@ -668,37 +667,98 @@
     requestAnimationFrame(learnLoop);
   }
 
-  // ---- Preview audio (unchanged) ----
+  // ---- Preview audio: more violin-like synth ----
   function ensurePreviewCtx(){
     if(!previewCtx) previewCtx = new (window.AudioContext || window.webkitAudioContext)();
     previewCtx.resume?.();
   }
+
   function playClick(atTime){
     const o=previewCtx.createOscillator();
     const g=previewCtx.createGain();
-    o.type="square"; o.frequency.value=1200;
+    const f=previewCtx.createBiquadFilter();
+    o.type="square";
+    o.frequency.value=1600;
+    f.type="highpass";
+    f.frequency.setValueAtTime(800, atTime);
+
     g.gain.setValueAtTime(0.0001, atTime);
-    g.gain.exponentialRampToValueAtTime(0.35, atTime+0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, atTime+0.04);
-    o.connect(g); g.connect(previewCtx.destination);
-    o.start(atTime); o.stop(atTime+0.05);
+    g.gain.exponentialRampToValueAtTime(0.25, atTime+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, atTime+0.05);
+
+    o.connect(f); f.connect(g); g.connect(previewCtx.destination);
+    o.start(atTime); o.stop(atTime+0.06);
   }
-  function playBeep(freq, atTime, dur){
-    const o=previewCtx.createOscillator();
-    const g=previewCtx.createGain();
-    o.type="triangle"; o.frequency.value=freq;
-    const peak=0.45;
-    g.gain.setValueAtTime(0.0001, atTime);
-    g.gain.exponentialRampToValueAtTime(peak, atTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, atTime+Math.max(0.06, dur*0.9));
-    o.connect(g); g.connect(previewCtx.destination);
-    o.start(atTime); o.stop(atTime+Math.max(0.08, dur)+0.05);
+
+  // Bowed-ish synth: two detuned saws + filter + envelope + vibrato
+  function playViolinSynth(freq, atTime, dur){
+    const t0 = atTime;
+    const t1 = atTime + Math.max(0.08, dur);
+
+    const g = previewCtx.createGain();
+    const f = previewCtx.createBiquadFilter();
+    const comp = previewCtx.createDynamicsCompressor();
+
+    // filter
+    f.type = "lowpass";
+    f.frequency.setValueAtTime(Math.min(9000, Math.max(1200, freq*6)), t0);
+    f.Q.setValueAtTime(0.8, t0);
+
+    // envelope (bow: slower attack than pluck)
+    const attack = 0.045;
+    const release = 0.09;
+    const sustain = 0.22;
+
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(sustain, t0 + attack);
+    g.gain.setValueAtTime(sustain, Math.max(t0 + attack, t1 - release));
+    g.gain.exponentialRampToValueAtTime(0.0001, t1);
+
+    // oscillators
+    const o1 = previewCtx.createOscillator();
+    const o2 = previewCtx.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "sawtooth";
+    o1.frequency.setValueAtTime(freq, t0);
+    o2.frequency.setValueAtTime(freq, t0);
+    o1.detune.setValueAtTime(-7, t0);
+    o2.detune.setValueAtTime(+7, t0);
+
+    // subtle vibrato LFO
+    const lfo = previewCtx.createOscillator();
+    const lfoGain = previewCtx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.setValueAtTime(5.5, t0);
+    lfoGain.gain.setValueAtTime(12, t0); // cents-ish detune depth
+    lfo.connect(lfoGain);
+    lfoGain.connect(o1.detune);
+    lfoGain.connect(o2.detune);
+
+    // chain
+    o1.connect(f);
+    o2.connect(f);
+    f.connect(comp);
+    comp.connect(g);
+    g.connect(previewCtx.destination);
+
+    // start/stop
+    lfo.start(t0);
+    o1.start(t0);
+    o2.start(t0);
+
+    const stopTime = t1 + 0.02;
+    o1.stop(stopTime);
+    o2.stop(stopTime);
+    lfo.stop(stopTime);
   }
+
   testSoundBtn.addEventListener("click", ()=>{
     ensurePreviewCtx();
-    const t=previewCtx.currentTime+0.05;
-    playBeep(440, t, 0.25);
-    playBeep(660, t+0.30, 0.25);
+    const t=previewCtx.currentTime+0.06;
+    // little violin-ish arpeggio
+    playViolinSynth(440, t, 0.28);
+    playViolinSynth(659.25, t+0.32, 0.28);
+    playViolinSynth(880, t+0.64, 0.28);
     setStatus("Test sound played. If silent: iPhone silent switch/volume/Bluetooth.");
   });
 
@@ -722,7 +782,7 @@
     for(const n of notes){
       if(n.t<startSongTime) continue;
       const at=now+previewCountInSec+(n.t-startSongTime);
-      playBeep(n.hz, at, clamp(n.dur,0.08,1.2));
+      playViolinSynth(n.hz, at, clamp(n.dur,0.10,1.4));
     }
 
     if(metroOnEl.checked){
@@ -801,7 +861,7 @@
   previewPauseBtn.addEventListener("click", pausePreview);
   previewStopBtn.addEventListener("click", ()=>stopPreview(false));
 
-  // ---- Drawing (same as before) ----
+  // ---- Drawing (unchanged from your current) ----
   function roundRect(c,x,y,w,h,r){
     const rr=Math.min(r,w/2,h/2);
     c.beginPath();
@@ -1031,7 +1091,6 @@
     loadThemePref();
     loadDesignPref();
 
-    // settings default: open on desktop, closed on phone
     const isPhone = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
     setSettingsOpen(!isPhone);
 
