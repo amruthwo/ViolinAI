@@ -9,21 +9,15 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 
-  <!-- Inline SVG icon sprite (no emoji, no external assets) -->
+  <!-- Inline SVG icon sprite -->
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
-    <symbol id="i-play" viewBox="0 0 24 24">
-      <path d="M8 5v14l12-7z"></path>
-    </symbol>
-    <symbol id="i-pause" viewBox="0 0 24 24">
-      <path d="M6 5h4v14H6zM14 5h4v14h-4z"></path>
-    </symbol>
-    <symbol id="i-stop" viewBox="0 0 24 24">
-      <path d="M6 6h12v12H6z"></path>
-    </symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l12-7z"></path></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"></path></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"></path></symbol>
     <symbol id="i-volume" viewBox="0 0 24 24">
       <path d="M4 10v4h3l4 4V6L7 10H4z"></path>
       <path d="M16.5 12a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"></path>
@@ -45,30 +39,29 @@
         <div class="subtitle">MIDI / MusicXML • Preview (listen) • Learn (play-to-advance)</div>
       </div>
 
-      <!-- Transport row (bigger, flex-fill, SVG icons) -->
       <div class="transport">
-        <button id="previewPlayBtn" class="btn btn-primary btn-icon" disabled aria-label="Play">
+        <button id="previewPlayBtn" class="btn btn-primary btn-icon ripple" disabled aria-label="Play">
           <svg><use href="#i-play"></use></svg>
         </button>
-        <button id="previewPauseBtn" class="btn btn-tonal btn-icon" disabled aria-label="Pause">
+        <button id="previewPauseBtn" class="btn btn-tonal btn-icon ripple" disabled aria-label="Pause">
           <svg><use href="#i-pause"></use></svg>
         </button>
-        <button id="previewStopBtn" class="btn btn-ghost btn-icon" disabled aria-label="Stop">
+        <button id="previewStopBtn" class="btn btn-ghost btn-icon ripple" disabled aria-label="Stop">
           <svg><use href="#i-stop"></use></svg>
         </button>
-        <button id="testSoundBtn" class="btn btn-ghost btn-icon" disabled aria-label="Test sound">
+        <button id="testSoundBtn" class="btn btn-ghost btn-icon ripple" disabled aria-label="Test sound">
           <svg><use href="#i-volume"></use></svg>
         </button>
-        <button id="startMicBtn" class="btn btn-primary btn-icon" disabled aria-label="Start microphone">
+        <button id="startMicBtn" class="btn btn-primary btn-icon ripple" disabled aria-label="Start microphone">
           <svg><use href="#i-mic"></use></svg>
         </button>
 
-        <button id="settingsBtn" class="btn btn-ghost btn-icon btn-gear" aria-expanded="false" aria-controls="settingsPanel" title="Settings" aria-label="Settings">
+        <button id="settingsBtn" class="btn btn-ghost btn-icon btn-gear ripple"
+          aria-expanded="false" aria-controls="settingsPanel" title="Settings" aria-label="Settings">
           <svg><use href="#i-gear"></use></svg>
         </button>
       </div>
 
-      <!-- Settings panel -->
       <section id="settingsPanel" class="settings" hidden>
         <div class="settingsGrid">
           <label class="filePick">
@@ -77,13 +70,13 @@
           </label>
 
           <div class="seg" role="tablist" aria-label="Mode">
-            <button id="modePreview" class="segbtn active" type="button">Preview</button>
-            <button id="modeLearn" class="segbtn" type="button">Learn</button>
+            <button id="modePreview" class="segbtn active ripple" type="button">Preview</button>
+            <button id="modeLearn" class="segbtn ripple" type="button">Learn</button>
           </div>
 
           <div class="toggleRow">
-            <label class="chip"><input id="showSheet" type="checkbox" checked> Sheet</label>
-            <label class="chip"><input id="showFalling" type="checkbox" checked> Falling</label>
+            <label class="chip chip-pill"><input id="showSheet" type="checkbox" checked> Sheet</label>
+            <label class="chip chip-pill"><input id="showFalling" type="checkbox" checked> Falling</label>
           </div>
 
           <div class="selectRow">
@@ -97,7 +90,7 @@
               </select>
             </label>
 
-            <button id="themeBtn" class="btn btn-tonal" title="Toggle light/dark">🌙 Dark</button>
+            <button id="themeBtn" class="btn btn-tonal ripple" title="Toggle light/dark">🌙 Dark</button>
           </div>
         </div>
 
@@ -107,21 +100,25 @@
           <div class="row row-tight">
             <div class="tempoBox">
               <span class="label">Tempo</span>
-              <button id="tempoDownBtn" class="btn btn-ghost" disabled>−</button>
+              <button id="tempoDownBtn" class="btn btn-ghost btn-pill ripple" disabled>−</button>
               <span id="tempoVal" class="tempoVal">1.00×</span>
-              <button id="tempoUpBtn" class="btn btn-ghost" disabled>+</button>
+              <button id="tempoUpBtn" class="btn btn-ghost btn-pill ripple" disabled>+</button>
             </div>
 
             <label class="inline">Count-in (beats):
               <input id="countIn" type="number" min="0" max="8" step="1" value="4">
             </label>
 
-            <label class="chip"><input id="metroOn" type="checkbox"> Metronome</label>
+            <!-- Metronome pill now matches buttons -->
+            <label class="btn btn-ghost btn-pill chiplike">
+              <input id="metroOn" type="checkbox">
+              <span>Metronome</span>
+            </label>
 
             <div class="loopRow">
-              <button id="loopStartBtn" class="btn btn-ghost" disabled>⟲ Start</button>
-              <button id="loopEndBtn" class="btn btn-ghost" disabled>⟳ End</button>
-              <button id="loopClearBtn" class="btn btn-ghost" disabled>✕ Clear</button>
+              <button id="loopStartBtn" class="btn btn-ghost btn-pill ripple" disabled>⟲ Start</button>
+              <button id="loopEndBtn" class="btn btn-ghost btn-pill ripple" disabled>⟳ End</button>
+              <button id="loopClearBtn" class="btn btn-ghost btn-pill ripple" disabled>✕ Clear</button>
               <span class="pill" id="loopRead">Loop: off</span>
             </div>
           </div>
@@ -130,9 +127,9 @@
             <label class="inline">Tolerance (cents):
               <input id="tolCents" type="number" min="10" max="80" step="1" value="35">
             </label>
-            <label class="chip">
+            <label class="btn btn-ghost btn-pill chiplike">
               <input id="waitMode" type="checkbox" checked>
-              Wait mode
+              <span>Wait mode</span>
             </label>
           </div>
         </details>
@@ -175,6 +172,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
