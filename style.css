@@ -5,7 +5,6 @@ html, body { height: 100%; }
 .svg-sprite{ position:absolute; width:0; height:0; overflow:hidden; }
 .ico{ width:18px; height:18px; fill: currentColor; }
 
-/* ---- Base palette (can be overridden by JS in Material mode) ---- */
 html[data-theme="dark"]{
   --bg:#060611;
   --text:#f2f4ff;
@@ -25,6 +24,11 @@ html[data-theme="dark"]{
   --shadow1: 0 10px 22px rgba(0,0,0,0.40);
   --shadow2: 0 24px 66px rgba(0,0,0,0.55);
   --blur: 18px;
+
+  --bgFX:
+    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 14%, transparent), transparent 70%),
+    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%);
 }
 
 html[data-theme="light"]{
@@ -46,9 +50,13 @@ html[data-theme="light"]{
   --shadow1: 0 10px 20px rgba(0,0,0,0.10);
   --shadow2: 0 20px 52px rgba(0,0,0,0.16);
   --blur: 14px;
+
+  --bgFX:
+    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 12%, transparent), transparent 70%),
+    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%);
 }
 
-/* ---- Design: Classic ---- */
 html[data-design="classic"]{
   --surface: color-mix(in srgb, var(--bg) 92%, #ffffff10);
   --surface2: color-mix(in srgb, var(--bg) 88%, #ffffff12);
@@ -62,14 +70,8 @@ html[data-design="classic"]{
 
   --chipBg: color-mix(in srgb, var(--surface2) 85%, transparent);
   --chipBorder: color-mix(in srgb, var(--text) 14%, transparent);
-
-  --bgFX:
-    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 14%, transparent), transparent 70%),
-    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%);
 }
 
-/* ---- Design: Material 3-ish (flat + pastel + blobs; actual colors via JS seed) ---- */
 html[data-design="material"]{
   --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
   --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff18);
@@ -87,15 +89,8 @@ html[data-design="material"]{
   --chipBorder: color-mix(in srgb, var(--accent) 26%, transparent);
 
   --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
-
-  --bgFX:
-    radial-gradient(520px 420px at 14% 8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
-    radial-gradient(520px 420px at 86% 16%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
-    radial-gradient(620px 520px at 60% 108%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 70%),
-    radial-gradient(420px 360px at 48% 44%, color-mix(in srgb, var(--accent4) 12%, transparent), transparent 70%);
 }
 
-/* ---- Design: Liquid Glass ---- */
 html[data-design="liquid"]{
   --surface: color-mix(in srgb, #ffffff22 36%, var(--bg));
   --surface2: color-mix(in srgb, #ffffff28 40%, var(--bg));
@@ -118,21 +113,8 @@ html[data-design="liquid"]{
 
   --glassEdge: 0 0 0 1px color-mix(in srgb, #ffffff55 26%, transparent) inset;
   --glow: 0 0 28px color-mix(in srgb, var(--accent2) 24%, transparent);
-
-  --bgFX:
-    radial-gradient(900px 650px at 8% -10%, color-mix(in srgb, var(--accent2) 28%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 98% 10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 45% 120%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
-    conic-gradient(from 210deg at 50% 0%,
-      color-mix(in srgb, var(--accent) 16%, transparent),
-      color-mix(in srgb, var(--accent2) 18%, transparent),
-      color-mix(in srgb, var(--accent3) 14%, transparent),
-      color-mix(in srgb, var(--accent4) 14%, transparent),
-      color-mix(in srgb, var(--accent) 16%, transparent)
-    );
 }
 
-/* Auto (resolved by JS) */
 html[data-design="auto"]{
   --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
   --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
@@ -146,11 +128,6 @@ html[data-design="auto"]{
 
   --chipBg: color-mix(in srgb, var(--accent) 10%, var(--surface2));
   --chipBorder: color-mix(in srgb, var(--accent) 22%, transparent);
-
-  --bgFX:
-    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
-    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 18%, transparent), transparent 70%),
-    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 12%, transparent), transparent 70%);
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
@@ -158,13 +135,13 @@ html[data-design="auto"]{
   html[data-design="liquid"] .panel,
   html[data-design="liquid"] .settings,
   html[data-design="liquid"] .status,
-  html[data-design="liquid"] .readout{
+  html[data-design="liquid"] .readout,
+  html[data-design="liquid"] .readoutDetails{
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
   }
 }
 
-/* ---- Page ---- */
 body{
   margin:0;
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
@@ -174,7 +151,6 @@ body{
 
 .app{ height: 100%; display: grid; grid-template-rows: auto 1fr; }
 
-/* ---- Topbar ---- */
 .topbar{
   position: sticky;
   top:0;
@@ -190,7 +166,6 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 .title{ font-weight: 1000; letter-spacing: 0.2px; }
 .subtitle{ font-size: 12.5px; color: var(--muted); }
 
-/* ---- Transport ---- */
 .transport{ margin-top: 10px; display:flex; align-items:center; gap: 10px; }
 
 .btn-icon{
@@ -205,8 +180,7 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 .btn-icon svg{ width: 34px; height: 34px; fill: currentColor; }
 .btn-gear{ flex: 0 0 auto; width: 66px; }
 
-/* ---- Surfaces ---- */
-.status, .readout, .settings, .panel{
+.status, .readout, .settings, .panel, .readoutDetails{
   border: 1px solid var(--border);
   border-radius: var(--radius2);
   background: var(--surface);
@@ -214,11 +188,13 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 html[data-design="liquid"] .status,
 html[data-design="liquid"] .readout,
 html[data-design="liquid"] .settings,
-html[data-design="liquid"] .panel{ box-shadow: var(--shadow2), var(--glassEdge); }
+html[data-design="liquid"] .panel,
+html[data-design="liquid"] .readoutDetails{ box-shadow: var(--shadow2), var(--glassEdge); }
 html[data-design="material"] .status,
 html[data-design="material"] .readout,
 html[data-design="material"] .settings,
-html[data-design="material"] .panel{ box-shadow: var(--shadow1); }
+html[data-design="material"] .panel,
+html[data-design="material"] .readoutDetails{ box-shadow: var(--shadow1); }
 
 .settings{ margin-top: 10px; padding: 12px; }
 .settingsGrid{ display:grid; gap: 10px; }
@@ -226,7 +202,6 @@ html[data-design="material"] .panel{ box-shadow: var(--shadow1); }
   .settingsGrid{ grid-template-columns: 1.2fr 1fr 1fr 1fr; align-items: center; }
 }
 
-/* ---- Stage ---- */
 .stageGrid{ padding: 14px; display:grid; gap: 14px; align-content: start; }
 @media (min-width: 900px){ .stageGrid{ grid-template-columns: 1fr 1fr; padding: 16px; } }
 
@@ -236,22 +211,20 @@ html[data-design="material"] .panel{ box-shadow: var(--shadow1); }
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface2) 92%, transparent);
 }
-html[data-design="material"] .panelHdr{
-  background:
-    radial-gradient(200px 140px at 18% 30%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
-    color-mix(in srgb, var(--surface2) 92%, transparent);
-}
-html[data-design="liquid"] .panelHdr{
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--surface2) 85%, transparent), color-mix(in srgb, var(--accent2) 12%, transparent));
-}
-
-.panelTitle{ font-weight: 1000; }
-.panelHint{ font-size: 12px; color: var(--muted); margin-top: 2px; }
 
 canvas{ width: 100%; height: auto; display:block; background: var(--canvas); }
 
-/* ---- Buttons ---- */
+.canvasScroll{
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.canvasScroll canvas{
+  display:block;
+  height: auto;
+}
+
 .btn{
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -300,7 +273,6 @@ html[data-design="liquid"] .btn-primary{
 }
 .btn.chiplike input{ transform: translateY(1px); }
 
-/* ---- Material Ripple ---- */
 .ripple{ overflow:hidden; }
 .ripple-ink{
   position:absolute;
@@ -313,12 +285,8 @@ html[data-design="liquid"] .btn-primary{
 }
 html[data-design="material"] .ripple-ink{ opacity: 0.25; }
 html[data-design="liquid"] .ripple-ink{ opacity: 0.18; }
+@keyframes ripple{ to{ transform: scale(1); opacity: 0; } }
 
-@keyframes ripple{
-  to{ transform: scale(1); opacity: 0; }
-}
-
-/* ---- Liquid shimmer sweep (primary buttons) ---- */
 html[data-design="liquid"] .btn-primary::before{
   content:"";
   position:absolute;
@@ -344,13 +312,11 @@ html[data-design="liquid"] .btn-primary:disabled::before{ animation: none; opaci
   100%    { transform: translateX(140%); }
 }
 
-/* ---- Material-ish focus ring ---- */
 html[data-design="material"] .btn:focus-visible{
   outline: none;
   box-shadow: var(--m3Ring);
 }
 
-/* ---- Chips ---- */
 .chip{
   display:inline-flex;
   align-items:center;
@@ -370,7 +336,6 @@ html[data-design="material"] .btn:focus-visible{
 
 .toggleRow{ display:flex; flex-wrap: wrap; gap: 8px; align-items:center; }
 
-/* ---- File picker ---- */
 .filePick{
   display:flex;
   gap: 10px;
@@ -383,7 +348,6 @@ html[data-design="material"] .btn:focus-visible{
 .filePick span{ font-weight: 1000; color: var(--muted); }
 .filePick input{ width: 280px; max-width: 62vw; }
 
-/* ---- Segmented ---- */
 .seg{
   display:flex;
   width: 100%;
@@ -407,14 +371,7 @@ html[data-design="material"] .btn:focus-visible{
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent) inset;
 }
-html[data-design="liquid"] .segbtn.active{
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 30%, transparent),
-    color-mix(in srgb, var(--accent2) 18%, transparent)
-  );
-}
 
-/* ---- Select row ---- */
 .selectRow{ display:flex; flex-wrap: wrap; gap: 10px; align-items:center; }
 .select{
   display:flex;
@@ -435,11 +392,62 @@ html[data-design="liquid"] .segbtn.active{
   font-weight: 1000;
 }
 
-/* ---- Status + readout ---- */
-.status{ margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
-.readout{ margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 13px; display:grid; gap: 4px; }
+.seedControls{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.seedDots{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+}
+.seedDot{
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+}
+.seedDot.active{
+  outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px;
+}
 
-/* ---- Advanced ---- */
+.status{ margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+.readoutDetails{
+  margin-top: 10px;
+  overflow: hidden;
+}
+.readoutSummary{
+  cursor: pointer;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-weight: 1000;
+  list-style: none;
+}
+.readoutSummary::-webkit-details-marker{ display:none; }
+.readoutSummary .chev{
+  width: 22px; height: 22px; fill: currentColor;
+  transition: transform .15s ease;
+}
+.readoutDetails[open] .readoutSummary .chev{ transform: rotate(180deg); }
+
+.readout{
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  display:grid;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+}
+
 .advanced{
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -503,12 +511,12 @@ html[data-design="liquid"] .segbtn.active{
 .tempoBox .label{ font-size: 13px; color: var(--muted); font-weight: 1000; }
 .tempoVal{ min-width: 62px; text-align:center; font-weight: 1000; }
 
-/* Mobile */
+/* Mobile improvements */
 @media (max-width: 520px){
   .filePick input{ width: 180px; max-width: 56vw; }
   .settings{ padding: 10px; }
   .transport{ gap: 8px; }
-  .btn-icon{ height: 62px; }
-  .btn-gear{ width: 62px; }
-  .btn-icon svg{ width: 32px; height: 32px; }
+  .btn-icon{ height: 74px; } /* taller buttons = easier tapping */
+  .btn-gear{ width: 74px; }
+  .btn-icon svg{ width: 34px; height: 34px; }
 }
