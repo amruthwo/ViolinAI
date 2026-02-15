@@ -3,8 +3,9 @@
 html, body { height: 100%; }
 
 .svg-sprite{ position:absolute; width:0; height:0; overflow:hidden; }
+.ico{ width:18px; height:18px; fill: currentColor; }
 
-/* ---- Base palette ---- */
+/* ---- Base palette (can be overridden by JS in Material mode) ---- */
 html[data-theme="dark"]{
   --bg:#060611;
   --text:#f2f4ff;
@@ -68,13 +69,12 @@ html[data-design="classic"]{
     radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%);
 }
 
-/* ---- Design: Material 3-ish (FLAT + PASTEL + BLOBS) ---- */
+/* ---- Design: Material 3-ish (flat + pastel + blobs; actual colors via JS seed) ---- */
 html[data-design="material"]{
   --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
   --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff18);
   --border: color-mix(in srgb, var(--text) 12%, transparent);
 
-  /* flatter filled/tonal (no Apple-esque gradients) */
   --btnFill: var(--accent);
   --btnFillText:#fff;
 
@@ -88,7 +88,6 @@ html[data-design="material"]{
 
   --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
 
-  /* pastel families + bubbly blobs */
   --bgFX:
     radial-gradient(520px 420px at 14% 8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
     radial-gradient(520px 420px at 86% 16%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
@@ -96,7 +95,7 @@ html[data-design="material"]{
     radial-gradient(420px 360px at 48% 44%, color-mix(in srgb, var(--accent4) 12%, transparent), transparent 70%);
 }
 
-/* ---- Design: Liquid Glass (IRIDESCENT + SHIMMER) ---- */
+/* ---- Design: Liquid Glass ---- */
 html[data-design="liquid"]{
   --surface: color-mix(in srgb, #ffffff22 36%, var(--bg));
   --surface2: color-mix(in srgb, #ffffff28 40%, var(--bg));
@@ -204,7 +203,6 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
   justify-content:center;
 }
 .btn-icon svg{ width: 34px; height: 34px; fill: currentColor; }
-
 .btn-gear{ flex: 0 0 auto; width: 66px; }
 
 /* ---- Surfaces ---- */
@@ -274,7 +272,6 @@ canvas{ width: 100%; height: auto; display:block; background: var(--canvas); }
   box-shadow: 0 14px 34px color-mix(in srgb, var(--accent2) 20%, transparent);
 }
 html[data-design="material"] .btn-primary{
-  /* flatter M3 elevation */
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 html[data-design="liquid"] .btn-primary{
@@ -284,7 +281,6 @@ html[data-design="liquid"] .btn-primary{
 .btn-tonal{ background: var(--btnTonal); color: var(--btnTonalText); }
 .btn-ghost{ background: var(--btnGhost); }
 
-/* Standard pill button size for Practice/Timing controls */
 .btn-pill{
   height: 40px;
   padding: 0 12px;
@@ -294,8 +290,6 @@ html[data-design="liquid"] .btn-primary{
   gap: 8px;
   border-radius: 999px;
 }
-
-/* Checkbox pills styled like buttons */
 .btn.chiplike{
   height: 40px;
   padding: 0 12px;
@@ -304,14 +298,10 @@ html[data-design="liquid"] .btn-primary{
   gap: 10px;
   user-select: none;
 }
-.btn.chiplike input{
-  transform: translateY(1px);
-}
+.btn.chiplike input{ transform: translateY(1px); }
 
 /* ---- Material Ripple ---- */
-.ripple{
-  overflow:hidden;
-}
+.ripple{ overflow:hidden; }
 .ripple-ink{
   position:absolute;
   border-radius: 50%;
@@ -321,17 +311,11 @@ html[data-design="liquid"] .btn-primary{
   animation: ripple 550ms ease-out;
   background: currentColor;
 }
-html[data-design="material"] .ripple-ink{
-  opacity: 0.25;
-}
-html[data-design="liquid"] .ripple-ink{
-  opacity: 0.18;
-}
+html[data-design="material"] .ripple-ink{ opacity: 0.25; }
+html[data-design="liquid"] .ripple-ink{ opacity: 0.18; }
+
 @keyframes ripple{
-  to{
-    transform: scale(1);
-    opacity: 0;
-  }
+  to{ transform: scale(1); opacity: 0; }
 }
 
 /* ---- Liquid shimmer sweep (primary buttons) ---- */
@@ -353,10 +337,7 @@ html[data-design="liquid"] .btn-primary::before{
   pointer-events:none;
   animation: shimmer 3.2s ease-in-out infinite;
 }
-html[data-design="liquid"] .btn-primary:disabled::before{
-  animation: none;
-  opacity: 0;
-}
+html[data-design="liquid"] .btn-primary:disabled::before{ animation: none; opacity: 0; }
 @keyframes shimmer{
   0%, 55% { transform: translateX(-140%); }
   75%     { transform: translateX(140%); }
