@@ -1,93 +1,129 @@
-/* -------------------------------------------------------
-   Design tokens: theme (light/dark) + design (classic/liquid/material)
-   ------------------------------------------------------- */
-
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
 html[data-theme="dark"]{
-  --bg:#0b0b0d;
-  --text:#e9e9ee;
-  --muted:rgba(233,233,238,0.75);
-  --stroke:#2b2b33;
+  --bg:#090a0f;
+  --text:#eef0ff;
+  --muted:rgba(238,240,255,0.72);
 
-  --accent:#2a7cff;
+  --accent:#5b8cff;
+  --accent2:#ff4fd8;
+  --accent3:#35f3c6;
 
-  --panel:#121217;
-  --panel2:#14141a;
-  --canvas:#0f0f14;
-  --lane:#14141c;
+  --canvas:#0c0d14;
+  --lane:#111325;
 
-  --shadow: 0 12px 34px rgba(0,0,0,0.45);
   --radius: 16px;
-  --radius2: 22px;
+  --radius2: 26px;
+
+  --shadow1: 0 10px 22px rgba(0,0,0,0.38);
+  --shadow2: 0 20px 50px rgba(0,0,0,0.48);
   --blur: 18px;
 }
 
 html[data-theme="light"]{
-  --bg:#f7f7fb;
-  --text:#141420;
-  --muted:rgba(20,20,32,0.70);
-  --stroke:#d7d7e3;
+  --bg:#f6f7ff;
+  --text:#101125;
+  --muted:rgba(16,17,37,0.70);
 
-  --accent:#1d63ff;
+  --accent:#2a63ff;
+  --accent2:#d23cff;
+  --accent3:#00b894;
 
-  --panel:#ffffff;
-  --panel2:#ffffff;
   --canvas:#ffffff;
-  --lane:#f1f1f7;
+  --lane:#f0f2ff;
 
-  --shadow: 0 10px 24px rgba(0,0,0,0.12);
   --radius: 16px;
-  --radius2: 22px;
-  --blur: 16px;
-}
-
-/* Classic (baseline) */
-html[data-design="classic"]{
-  --surface: var(--panel);
-  --surface2: var(--panel2);
-  --border: var(--stroke);
-  --btnbg: var(--panel2);
-  --btnborder: var(--stroke);
-  --glassAlpha: 1;
-}
-
-/* Liquid Glass: translucent panels + blur where supported */
-html[data-design="liquid"]{
-  --surface: color-mix(in srgb, var(--panel) 70%, transparent);
-  --surface2: color-mix(in srgb, var(--panel2) 60%, transparent);
-  --border: color-mix(in srgb, var(--stroke) 70%, transparent);
-  --btnbg: color-mix(in srgb, var(--panel2) 60%, transparent);
-  --btnborder: color-mix(in srgb, var(--stroke) 65%, transparent);
-  --glassAlpha: 0.86;
-}
-
-/* Material-ish: flatter surfaces, stronger accent, more spacing */
-html[data-design="material"]{
-  --surface: var(--panel);
-  --surface2: color-mix(in srgb, var(--panel) 92%, #0000);
-  --border: color-mix(in srgb, var(--stroke) 85%, #0000);
-  --btnbg: var(--panel);
-  --btnborder: color-mix(in srgb, var(--stroke) 85%, #0000);
-  --glassAlpha: 1;
-  --radius: 18px;
   --radius2: 26px;
+
+  --shadow1: 0 10px 20px rgba(0,0,0,0.10);
+  --shadow2: 0 18px 44px rgba(0,0,0,0.16);
+  --blur: 14px;
 }
 
-/* Auto will be resolved by JS into liquid/material, but keep defaults safe */
+/* -------- Design: Classic -------- */
+html[data-design="classic"]{
+  --surface: color-mix(in srgb, var(--bg) 88%, #ffffff10);
+  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff12);
+  --border: color-mix(in srgb, var(--text) 14%, transparent);
+
+  --btnFill: var(--accent);
+  --btnFillText: #fff;
+  --btnTonal: color-mix(in srgb, var(--accent) 18%, var(--surface2));
+  --btnTonalText: var(--text);
+  --btnGhost: color-mix(in srgb, var(--surface2) 60%, transparent);
+
+  --chipBg: color-mix(in srgb, var(--surface2) 85%, transparent);
+  --chipBorder: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+/* -------- Design: Material 3-ish -------- */
+html[data-design="material"]{
+  --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
+  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
+  --border: color-mix(in srgb, var(--text) 12%, transparent);
+
+  /* M3 vibe: clear filled + tonal + outlined/ghost */
+  --btnFill: color-mix(in srgb, var(--accent) 92%, #0000);
+  --btnFillText: #fff;
+  --btnTonal: color-mix(in srgb, var(--accent) 20%, var(--surface2));
+  --btnTonalText: var(--text);
+  --btnGhost: transparent;
+
+  --chipBg: color-mix(in srgb, var(--accent) 10%, var(--surface2));
+  --chipBorder: color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* -------- Design: Liquid Glass -------- */
+html[data-design="liquid"]{
+  /* Frosted surfaces + spectral sheen */
+  --surface: color-mix(in srgb, #ffffff18 30%, var(--bg));
+  --surface2: color-mix(in srgb, #ffffff22 34%, var(--bg));
+  --border: color-mix(in srgb, #ffffff22 55%, transparent);
+
+  --btnFill: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 86%, #ffffff20),
+    color-mix(in srgb, var(--accent2) 60%, #ffffff10)
+  );
+  --btnFillText:#fff;
+
+  --btnTonal: color-mix(in srgb, #ffffff18 60%, transparent);
+  --btnTonalText: var(--text);
+
+  --btnGhost: color-mix(in srgb, #ffffff14 55%, transparent);
+
+  --chipBg: color-mix(in srgb, #ffffff16 55%, transparent);
+  --chipBorder: color-mix(in srgb, #ffffff22 60%, transparent);
+
+  --glassEdge: 0 0 0 1px color-mix(in srgb, #ffffff35 30%, transparent) inset;
+  --glow: 0 0 22px color-mix(in srgb, var(--accent2) 20%, transparent);
+}
+
 html[data-design="auto"]{
-  --surface: var(--panel);
-  --surface2: var(--panel2);
-  --border: var(--stroke);
-  --btnbg: var(--panel2);
-  --btnborder: var(--stroke);
-  --glassAlpha: 1;
+  /* resolved in JS, but safe defaults */
+  --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
+  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
+  --border: color-mix(in srgb, var(--text) 12%, transparent);
+
+  --btnFill: var(--accent);
+  --btnFillText:#fff;
+  --btnTonal: color-mix(in srgb, var(--accent) 20%, var(--surface2));
+  --btnTonalText: var(--text);
+  --btnGhost: transparent;
+
+  --chipBg: color-mix(in srgb, var(--accent) 10%, var(--surface2));
+  --chipBorder: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html[data-design="liquid"] .glass {
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  html[data-design="liquid"] .topbar,
+  html[data-design="liquid"] .panel,
+  html[data-design="liquid"] .settings,
+  html[data-design="liquid"] .status,
+  html[data-design="liquid"] .readout{
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
   }
@@ -96,279 +132,327 @@ html[data-design="auto"]{
 body{
   margin:0;
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  background: radial-gradient(1200px 600px at 10% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent),
-              radial-gradient(900px 500px at 90% 10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent),
-              var(--bg);
   color: var(--text);
+  background:
+    radial-gradient(900px 600px at 12% -10%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%),
+    radial-gradient(900px 600px at 95% 10%, color-mix(in srgb, var(--accent2) 18%, transparent), transparent 70%),
+    radial-gradient(700px 500px at 40% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%),
+    var(--bg);
 }
 
-/* -------------------------------------------------------
-   Layout
-   ------------------------------------------------------- */
 .app{
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr;
 }
 
+/* -------- Topbar -------- */
 .topbar{
   position: sticky;
-  top: 0;
-  z-index: 5;
-  padding: 12px 14px;
+  top:0;
+  z-index: 10;
+  padding: 12px 12px 10px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow1);
 }
+html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 
-.topbar.glass{ /* for liquid blur */
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
+.brand{
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
 }
+.title{ font-weight: 1000; letter-spacing: 0.2px; }
+.subtitle{ font-size: 12.5px; color: var(--muted); }
 
-.brand .title{ font-weight: 1000; font-size: 18px; }
-.brand .subtitle{ font-size: 13px; color: var(--muted); margin-top: 2px; }
-
-.top-controls{
+/* Transport row is always compact */
+.transport{
   margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+.spacer{ flex:1; }
+
+.status, .readout, .settings, .panel{
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  background: var(--surface);
 }
 
-.actionRow{
+html[data-design="liquid"] .status,
+html[data-design="liquid"] .readout,
+html[data-design="liquid"] .settings,
+html[data-design="liquid"] .panel{
+  box-shadow: var(--shadow2), var(--glassEdge);
+}
+html[data-design="material"] .status,
+html[data-design="material"] .readout,
+html[data-design="material"] .settings,
+html[data-design="material"] .panel{
+  box-shadow: var(--shadow1);
+}
+
+/* Settings drawer */
+.settings{
   margin-top: 10px;
-  display: grid;
+  padding: 12px;
+}
+.settingsGrid{
+  display:grid;
   gap: 10px;
 }
-
-/* On wide screens, keep action row more compact */
-@media (min-width: 960px){
-  .actionRow{
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
+@media (min-width: 860px){
+  .settingsGrid{
+    grid-template-columns: 1.2fr 1fr 1fr 1fr;
+    align-items: center;
   }
-  .actionRow .advanced{ grid-column: 1 / -1; }
 }
 
+/* Stage grid */
 .stageGrid{
   padding: 14px;
   display: grid;
   gap: 14px;
   align-content: start;
 }
-
-/* Wide: side-by-side canvases */
 @media (min-width: 900px){
-  .stageGrid{
-    grid-template-columns: 1fr 1fr;
-    padding: 16px;
-  }
+  .stageGrid{ grid-template-columns: 1fr 1fr; padding: 16px; }
 }
 
-/* -------------------------------------------------------
-   Components
-   ------------------------------------------------------- */
 .panel{
-  border: 1px solid var(--border);
-  border-radius: var(--radius2);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow:hidden;
 }
-
-html[data-design="liquid"] .panel{
-  background: var(--surface);
-}
-html[data-design="liquid"] .panel{
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
-}
-
 .panelHdr{
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
 }
-.panelTitle{ font-weight: 900; }
-.panelHint{ font-size: 12px; color: var(--muted); }
+.panelTitle{ font-weight: 1000; }
+.panelHint{ font-size: 12px; color: var(--muted); margin-top: 2px; }
 
 canvas{
   width: 100%;
   height: auto;
-  display: block;
+  display:block;
   background: var(--canvas);
 }
 
-/* Buttons / inputs */
-button{
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--btnborder);
-  background: var(--btnbg);
-  color: var(--text);
-  font-weight: 900;
-}
-button:disabled{ opacity: 0.55; }
-
-.file{
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.file span{
-  padding: 8px 10px;
+/* -------- Unified controls -------- */
+.btn{
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface2);
-  font-weight: 900;
+  border-radius: 999px;
+  padding: 10px 12px;
+  font-weight: 1000;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface2) 70%, transparent);
+  transition: transform .06s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+  line-height: 1;
 }
-.file input{
-  width: 260px;
-  max-width: 64vw;
+.btn:active{ transform: translateY(1px); }
+.btn:disabled{ opacity: .55; }
+
+.btn-primary{
+  background: var(--btnFill);
+  color: var(--btnFillText);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+html[data-design="liquid"] .btn-primary{
+  box-shadow: var(--glow), 0 14px 30px rgba(0,0,0,0.35);
 }
 
+.btn-tonal{
+  background: var(--btnTonal);
+  color: var(--btnTonalText);
+}
+.btn-ghost{
+  background: var(--btnGhost);
+}
+
+html[data-design="material"] .btn{
+  border-radius: 18px;
+}
+html[data-design="material"] .btn:focus-visible{
+  outline: none;
+  box-shadow: var(--m3Ring);
+}
+
+/* Chips (toggles) */
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--chipBorder);
+  background: var(--chipBg);
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 900;
+}
+.chip input{ transform: translateY(1px); }
+
+.toggleRow{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* File picker */
+.filePick{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.filePick span{
+  font-weight: 1000;
+  color: var(--muted);
+}
+.filePick input{
+  width: 280px;
+  max-width: 62vw;
+}
+
+/* Segmented control */
 .seg{
   display:inline-flex;
-  border:1px solid var(--border);
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   overflow:hidden;
   background: var(--surface2);
 }
 .segbtn{
   border:0;
-  border-right:1px solid var(--border);
-  border-radius:0;
-  padding:10px 12px;
-  background:transparent;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 1000;
 }
-.segbtn:last-child{ border-right:0; }
-.segbtn.active{ background: var(--accent); color:#fff; }
-
-.checks{
-  display:flex;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--muted);
-  align-items: center;
+.segbtn.active{
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset;
 }
-.checks input{ transform: translateY(1px); }
 
-.designRow{
+.selectRow{
   display:flex;
+  flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
+  align-items:center;
 }
 .select{
-  display:inline-flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 14px;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface2);
 }
 .select span{
   font-size: 13px;
   color: var(--muted);
-  font-weight: 900;
+  font-weight: 1000;
 }
 .select select{
   border: 1px solid var(--border);
-  background: var(--btnbg);
+  background: color-mix(in srgb, var(--surface2) 70%, transparent);
   color: var(--text);
-  border-radius: 12px;
-  padding: 7px 10px;
-  font-weight: 900;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 1000;
 }
 
+/* Status + readout */
 .status{
-  font-size: 13px;
-  color: var(--muted);
+  margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface2);
-}
-
-.readout{
-  font-size: 13px;
   color: var(--muted);
+  font-size: 13px;
+}
+.readout{
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
   display:grid;
   gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface2);
 }
 
+/* Advanced section */
 .advanced{
+  margin-top: 10px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius2);
   padding: 10px 10px 8px;
-  background: var(--surface2);
+  background: color-mix(in srgb, var(--surface2) 85%, transparent);
 }
 .advanced summary{
-  cursor:pointer;
+  cursor: pointer;
   font-weight: 1000;
+  color: var(--text);
   opacity: 0.95;
   margin: 0 0 10px;
 }
 .row{
   display:flex;
-  flex-wrap:wrap;
+  flex-wrap: wrap;
   gap: 10px;
   align-items:center;
 }
 .row-tight{ gap: 8px; }
-
 .inline{
-  font-size: 13px;
-  color: var(--muted);
   display:inline-flex;
   align-items:center;
   gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 900;
 }
 .inline input[type="number"]{
-  width: 78px;
-  padding: 6px 8px;
-  border-radius: 12px;
+  width: 82px;
+  padding: 7px 10px;
+  border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--btnbg);
+  background: color-mix(in srgb, var(--surface2) 75%, transparent);
   color: var(--text);
-  font-weight: 900;
+  font-weight: 1000;
 }
 
 .pill{
   font-size: 13px;
   color: var(--muted);
-  padding: 4px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
+}
+
+.loopRow{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items:center;
 }
 
 .tempoBox{
   display:inline-flex;
   align-items:center;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: 16px;
+  padding: 8px 10px;
+  border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
 }
 .tempoBox .label{
   font-size: 13px;
   color: var(--muted);
   font-weight: 1000;
-  margin-right: 2px;
-}
-.tempoBox button{
-  padding: 6px 10px;
-  border-radius: 14px;
 }
 .tempoVal{
   min-width: 62px;
@@ -376,9 +460,9 @@ button:disabled{ opacity: 0.55; }
   font-weight: 1000;
 }
 
-/* Small screens: make controls breathe */
+/* Mobile tightening */
 @media (max-width: 520px){
-  .file input{ width: 170px; max-width: 56vw; }
-  button{ padding: 9px 10px; border-radius: 14px; }
-  .topbar{ padding: 10px 12px; }
+  .filePick input{ width: 180px; max-width: 56vw; }
+  .btn{ padding: 10px 11px; }
+  .settings{ padding: 10px; }
 }
