@@ -1,9 +1,9 @@
-const CACHE = "violin-falling-notes-v4";
+const CACHE = "violin-falling-notes-v5";
 const ASSETS = [
   "./",
   "./index.html",
-  "./style.css?v=4",
-  "./app.js?v=4",
+  "./style.css?v=5",
+  "./app.js?v=5",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
