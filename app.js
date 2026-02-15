@@ -6,25 +6,19 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   const $ = (id) => document.getElementById(id);
 
-  // ---- Ripple wiring (Material-style) ----
+  // Ripple
   function addRipples() {
     const els = document.querySelectorAll(".ripple");
     for (const el of els) {
       el.addEventListener("pointerdown", (ev) => {
         if (el.disabled) return;
-
         const rect = el.getBoundingClientRect();
         const size = Math.max(rect.width, rect.height) * 2.1;
-
         const ink = document.createElement("span");
         ink.className = "ripple-ink";
         ink.style.width = ink.style.height = `${size}px`;
-
-        const x = ev.clientX - rect.left - size / 2;
-        const y = ev.clientY - rect.top - size / 2;
-        ink.style.left = `${x}px`;
-        ink.style.top = `${y}px`;
-
+        ink.style.left = `${ev.clientX - rect.left - size / 2}px`;
+        ink.style.top  = `${ev.clientY - rect.top - size / 2}px`;
         el.appendChild(ink);
         ink.addEventListener("animationend", () => ink.remove(), { once: true });
       }, { passive: true });
@@ -67,11 +61,16 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   const themeBtn = $("themeBtn");
   const designSelect = $("designSelect");
 
+  const m3SeedControls = $("m3SeedControls");
   const m3ShuffleBtn = $("m3ShuffleBtn");
+  const m3SeedDots = $("m3SeedDots");
   const m3SeedTxt = $("m3SeedTxt");
+  const m3SeedLine = $("m3SeedLine");
 
   const settingsBtn = $("settingsBtn");
   const settingsPanel = $("settingsPanel");
+
+  const readoutDetails = $("readoutDetails");
 
   const targetTxt = $("targetTxt");
   const heardTxt = $("heardTxt");
@@ -81,13 +80,14 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
 
   const canvas = $("canvas");
   const sheetCanvas = $("sheetCanvas");
+  const sheetScroll = $("sheetScroll");
   const ctx = canvas.getContext("2d");
   const sctx = sheetCanvas.getContext("2d");
 
   const sheetPanel = $("sheetPanel");
   const fallingPanel = $("fallingPanel");
 
-  // Violin strings (open MIDI)
+  // Strings (open MIDI)
   const STRINGS = [
     { name: "G", open: 55 },
     { name: "D", open: 62 },
@@ -127,15 +127,13 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   let previewIsPlaying = false;
   let previewCountInSec = 0;
 
-  // ---- M3 Seed palette ----
-  // These are “seed-ish” hues commonly used in Material 3 examples/baselines.
-  // We’re using MCU to generate the real tonal scheme from them.
+  // ✅ Much more distinct Material seed colors (not all “bluish”)
   const M3_SEEDS = [
-    "#6750A4", // baseline purple (very common in M3 examples)
-    "#006874", // teal/cyan family
-    "#386A20", // green family
-    "#B3261E", // warm red family
-    "#7D5260"  // rose/mauve family
+    "#6750A4", // purple
+    "#006874", // teal
+    "#386A20", // green
+    "#B3261E", // red
+    "#D97900"  // orange
   ];
 
   function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
@@ -149,14 +147,14 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   }
   function centsOff(freq, targetHz){ return 1200 * Math.log2(freq/targetHz); }
 
-  // ---- Settings drawer toggle ----
+  // Settings drawer
   function setSettingsOpen(open){
     settingsPanel.hidden = !open;
     settingsBtn.setAttribute("aria-expanded", open ? "true":"false");
   }
   settingsBtn.addEventListener("click", ()=> setSettingsOpen(settingsPanel.hidden));
 
-  // ---- Platform + theming ----
+  // Platform
   function detectPlatform() {
     const ua = navigator.userAgent || "";
     const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -164,16 +162,24 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     return { isIOS, isAndroid };
   }
 
-  // ---- Material scheme application (seed -> CSS vars) ----
-  // M3's seed->scheme model is powered by Material Color Utilities. :contentReference[oaicite:3]{index=3}
+  // ---- Material scheme application ----
+  function makeBlobBg(primary, tertiary, secondary, accent4, isDark){
+    // stronger + more obvious blobs so “shuffle” is visible
+    const a = isDark ? 0.26 : 0.18;
+    const b = isDark ? 0.22 : 0.14;
+    const c = isDark ? 0.18 : 0.12;
+    return [
+      `radial-gradient(520px 420px at 16% 10%, color-mix(in srgb, ${primary} ${Math.round(a*100)}%, transparent), transparent 70%)`,
+      `radial-gradient(520px 420px at 88% 14%, color-mix(in srgb, ${tertiary} ${Math.round(b*100)}%, transparent), transparent 70%)`,
+      `radial-gradient(640px 520px at 60% 110%, color-mix(in srgb, ${secondary} ${Math.round(c*100)}%, transparent), transparent 70%)`,
+      `radial-gradient(460px 380px at 44% 52%, color-mix(in srgb, ${accent4} ${Math.round((c-0.04)*100)}%, transparent), transparent 70%)`,
+    ].join(", ");
+  }
+
   function applyMaterialSchemeFromSeed(seedHex) {
     const theme = themeFromSourceColor(argbFromHex(seedHex));
     const isDark = (document.documentElement.getAttribute("data-theme") || "dark") === "dark";
     const scheme = isDark ? theme.schemes.dark : theme.schemes.light;
-
-    // Map scheme roles -> our CSS custom properties
-    // Note: we keep “classic/liquid” untouched; these overrides only matter in resolved Material design.
-    const root = document.documentElement.style;
 
     const primary = hexFromArgb(scheme.primary);
     const secondary = hexFromArgb(scheme.secondary);
@@ -184,16 +190,15 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     const surface = hexFromArgb(scheme.surface);
     const surface2 = hexFromArgb(scheme.surfaceContainerHigh ?? scheme.surfaceContainer ?? scheme.surface);
     const outline = hexFromArgb(scheme.outline);
-
     const onSurface = hexFromArgb(scheme.onSurface);
 
-    // App palette anchors
+    const root = document.documentElement.style;
+
     root.setProperty("--accent", primary);
     root.setProperty("--accent3", secondary);
     root.setProperty("--accent2", tertiary);
     root.setProperty("--accent4", error);
 
-    // Surfaces + borders + text
     root.setProperty("--bg", bg);
     root.setProperty("--canvas", surface);
     root.setProperty("--lane", surface2);
@@ -203,16 +208,17 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     root.setProperty("--border", outline);
 
     root.setProperty("--text", onSurface);
-    // A nice “muted” derived from onSurface
     root.setProperty("--muted", isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.62)");
+
+    // ✅ Update background blobs so shuffle is obvious
+    root.setProperty("--bgFX", makeBlobBg(primary, tertiary, secondary, error, isDark));
   }
 
   function clearMaterialOverrides() {
-    // Remove only what we set
     const root = document.documentElement.style;
     for (const k of [
       "--accent","--accent2","--accent3","--accent4",
-      "--bg","--canvas","--lane","--surface","--surface2","--border","--text","--muted"
+      "--bg","--canvas","--lane","--surface","--surface2","--border","--text","--muted","--bgFX"
     ]) root.removeProperty(k);
   }
 
@@ -227,6 +233,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     const seed = M3_SEEDS[i];
     m3SeedTxt.textContent = seed;
     applyMaterialSchemeFromSeed(seed);
+    updateSeedDots(i);
   }
 
   function ensureSeedChosen() {
@@ -238,28 +245,47 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     return idx;
   }
 
-  // ---- Design selection / auto resolve ----
+  function buildSeedDots(){
+    m3SeedDots.innerHTML = "";
+    M3_SEEDS.forEach((hex, i) => {
+      const b = document.createElement("button");
+      b.className = "seedDot";
+      b.type = "button";
+      b.title = `Seed ${hex}`;
+      b.style.background = hex;
+      b.addEventListener("click", () => setSeedIndex(i));
+      m3SeedDots.appendChild(b);
+    });
+  }
+  function updateSeedDots(activeIdx){
+    const dots = m3SeedDots.querySelectorAll(".seedDot");
+    dots.forEach((d, i) => d.classList.toggle("active", i === activeIdx));
+  }
+
+  // Design selection / auto resolve
   let resolvedDesign = "material";
 
   function applyDesign(design) {
     const plat = detectPlatform();
     resolvedDesign = design;
     if (design === "auto") resolvedDesign = plat.isIOS ? "liquid" : "material";
-
     document.documentElement.setAttribute("data-design", resolvedDesign);
 
-    // Show shuffle button only in Material mode
-    const showShuffle = resolvedDesign === "material";
-    m3ShuffleBtn.hidden = !showShuffle;
+    const showM3 = resolvedDesign === "material";
+    m3SeedControls.hidden = !showM3;
+    m3SeedLine.style.display = showM3 ? "" : "none";
 
-    if (showShuffle) {
+    if (showM3) {
+      buildSeedDots();
       const idx = ensureSeedChosen();
       setSeedIndex(idx);
     } else {
-      // Don't force M3 overrides into other themes
       clearMaterialOverrides();
       m3SeedTxt.textContent = "—";
     }
+
+    resizeCanvases();
+    drawFalling(); drawSheet();
   }
 
   function loadDesignPref() {
@@ -272,7 +298,6 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     const v = designSelect.value;
     localStorage.setItem("vfn_design", v);
     applyDesign(v);
-    drawFalling(); drawSheet();
   });
 
   m3ShuffleBtn.addEventListener("click", () => {
@@ -289,12 +314,10 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f4f6ff");
 
-    // Recompute M3 scheme for light/dark switch
     if (resolvedDesign === "material") {
       const idx = ensureSeedChosen();
       setSeedIndex(idx);
     }
-
     drawFalling(); drawSheet();
   }
 
@@ -312,7 +335,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     catch { setTheme("dark"); }
   }
 
-  // ---- View visibility ----
+  // View visibility
   function applyViewVisibility(){
     const showSheet = showSheetEl.checked;
     const showFall = showFallingEl.checked;
@@ -349,23 +372,41 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   modePreviewBtn.addEventListener("click", ()=>setMode("preview"));
   modeLearnBtn.addEventListener("click", ()=>setMode("learn"));
 
-  // Canvas sizing
+  // Canvas sizing (✅ bigger falling height on phones, ✅ wider sheet for scroll)
   function resizeCanvases(){
     dpr = window.devicePixelRatio || 1;
 
-    function sizeCanvasToPanel(c, panel, aspect){
-      if (!panel || panel.style.display === "none") return;
-      const rect = panel.getBoundingClientRect();
-      const cssW = Math.max(260, Math.floor(rect.width));
-      const cssH = Math.max(220, Math.floor(cssW * aspect));
+    const isPhone = window.matchMedia && window.matchMedia("(max-width: 520px)").matches;
+
+    function sizeCanvas(c, cssW, cssH){
       c.style.width = cssW + "px";
       c.style.height = cssH + "px";
       c.width = Math.floor(cssW * dpr);
       c.height = Math.floor(cssH * dpr);
     }
 
-    sizeCanvasToPanel(sheetCanvas, sheetPanel, 0.58);
-    sizeCanvasToPanel(canvas, fallingPanel, 0.56);
+    // Falling: taller on phones
+    if (fallingPanel && fallingPanel.style.display !== "none") {
+      const rect = fallingPanel.getBoundingClientRect();
+      const cssW = Math.max(260, Math.floor(rect.width));
+      const cssH = isPhone ? Math.max(380, Math.floor(cssW * 0.92)) : Math.max(260, Math.floor(cssW * 0.56));
+      sizeCanvas(canvas, cssW, cssH);
+    }
+
+    // Sheet: render wider than viewport so notes can spread out; scroll container handles it
+    if (sheetPanel && sheetPanel.style.display !== "none") {
+      const rect = sheetPanel.getBoundingClientRect();
+      const viewW = Math.max(260, Math.floor(rect.width));
+
+      const widen = isPhone ? 1.9 : 1.2;        // ✅ phone gets much more width
+      const cssW = Math.floor(viewW * widen);
+      const cssH = isPhone ? Math.max(240, Math.floor(viewW * 0.55)) : Math.max(220, Math.floor(viewW * 0.58));
+
+      sizeCanvas(sheetCanvas, cssW, cssH);
+
+      // keep scroll sensible
+      sheetScroll.scrollLeft = Math.max(0, sheetScroll.scrollLeft);
+    }
   }
   window.addEventListener("resize", ()=>{ resizeCanvases(); drawFalling(); drawSheet(); });
 
@@ -622,12 +663,8 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
           }
         }
 
-        if (!chord) {
-          lastStartSec = startSec;
-          curSec += durSec;
-        } else {
-          lastStartSec = startSec;
-        }
+        if (!chord) { lastStartSec = startSec; curSec += durSec; }
+        else { lastStartSec = startSec; }
       }
     }
 
@@ -681,10 +718,6 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
 
       setStatus(`Loaded ${notes.length} notes from ${srcTxt.textContent}. BPM≈${Math.round(bpm)}.`);
 
-      if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
-        setSettingsOpen(false);
-      }
-
     } catch (err) {
       console.error(err);
       setStatus(`Could not load file: ${err.message || err}`);
@@ -698,7 +731,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     }
   });
 
-  // ---- Loop ----
+  // Loop
   function updateLoopReadout(){
     if(!loop.enabled) loopRead.textContent="Loop: off";
     else loopRead.textContent=`Loop: ${loop.start+1} → ${loop.end+1}`;
@@ -723,7 +756,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     return { tStart, tEnd };
   }
 
-  // ---- Learn (mic) ----
+  // Learn (mic)
   startMicBtn.addEventListener("click", async ()=>{
     if(!notes.length) return;
     stopPreview(true);
@@ -807,7 +840,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     requestAnimationFrame(learnLoop);
   }
 
-  // ---- Preview audio (violin-ish synth) ----
+  // Preview audio
   function ensurePreviewCtx(){
     if(!previewCtx) previewCtx = new (window.AudioContext || window.webkitAudioContext)();
     previewCtx.resume?.();
@@ -869,10 +902,8 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     lfoGain.connect(o1.detune);
     lfoGain.connect(o2.detune);
 
-    o1.connect(f);
-    o2.connect(f);
-    f.connect(comp);
-    comp.connect(g);
+    o1.connect(f); o2.connect(f);
+    f.connect(comp); comp.connect(g);
     g.connect(previewCtx.destination);
 
     lfo.start(t0);
@@ -993,7 +1024,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
   previewPauseBtn.addEventListener("click", pausePreview);
   previewStopBtn.addEventListener("click", ()=>stopPreview(false));
 
-  // ---- Drawing (same as your current) ----
+  // Drawing helpers
   function roundRect(c,x,y,w,h,r){
     const rr=Math.min(r,w/2,h/2);
     c.beginPath();
@@ -1017,7 +1048,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     ctx.clearRect(0,0,cssW,cssH);
     ctx.fillStyle=bg; ctx.fillRect(0,0,cssW,cssH);
 
-    const topPad=18, bottomPad=26;
+    const topPad=18, bottomPad=28;
     const lanesY0=topPad, lanesY1=cssH-bottomPad;
 
     const laneCount=4, laneGap=12;
@@ -1036,7 +1067,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
       ctx.globalAlpha=1;
     }
 
-    const hitY=lanesY1-62;
+    const hitY=lanesY1-74;
     ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.globalAlpha=0.9;
     ctx.beginPath(); ctx.moveTo(0,hitY); ctx.lineTo(cssW,hitY); ctx.stroke();
     ctx.globalAlpha=1;
@@ -1044,17 +1075,17 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     const secondsVisible=6.2;
     const pxPerSec=(lanesY1-lanesY0)/secondsVisible;
 
-    const baseFont=clamp(cssW*0.030,16,28);
-    const currentFont=clamp(cssW*0.036,18,34);
-    const fingerFont=clamp(cssW*0.024,14,20);
+    const baseFont=clamp(cssW*0.034,18,30);
+    const currentFont=clamp(cssW*0.040,20,36);
+    const fingerFont=clamp(cssW*0.028,16,22);
 
     for(let i=0;i<notes.length;i++){
       const n=notes[i];
       const dt=n.t-visualTime;
-      if(dt<-0.8 || dt>secondsVisible) continue;
+      if(dt<-0.9 || dt>secondsVisible) continue;
 
       const y=hitY-dt*pxPerSec;
-      const height=Math.max(18, n.dur*pxPerSec);
+      const height=Math.max(22, n.dur*pxPerSec);
 
       const laneIdx=n.stringIndex;
       const x=laneIdx==null?laneX(0):laneX(laneIdx);
@@ -1077,17 +1108,17 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
       ctx.fillStyle=bg;
       ctx.globalAlpha=isPast?0.15:0.96;
       ctx.font=`900 ${isCurrent?currentFont:baseFont}px system-ui`;
-      ctx.fillText(n.label, rectX+12, rectY+Math.min((isCurrent?currentFont:baseFont)+8, rectH-6));
+      ctx.fillText(n.label, rectX+12, rectY+Math.min((isCurrent?currentFont:baseFont)+9, rectH-6));
 
       const badge=n.fingerText||"?";
-      const bx=rectX+rectW-56, by=rectY+10;
+      const bx=rectX+rectW-60, by=rectY+10;
       ctx.globalAlpha=isPast?0.14:0.92;
       ctx.fillStyle="rgba(0,0,0,0.22)";
-      roundRect(ctx, bx, by, 46, 28, 11);
+      roundRect(ctx, bx, by, 50, 30, 12);
       ctx.fill();
       ctx.fillStyle=bg;
       ctx.font=`900 ${fingerFont}px system-ui`;
-      ctx.fillText(badge, bx+14, by+20);
+      ctx.fillText(badge, bx+15, by+22);
 
       ctx.globalAlpha=1;
     }
@@ -1141,6 +1172,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     sctx.stroke();
     sctx.globalAlpha=1;
 
+    // Wider sheet gets more horizontal breathing room
     const secondsVisible=7.2;
     const t0=Math.max(0, visualTime-0.6);
     const t1=t0+secondsVisible;
@@ -1182,7 +1214,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
       sctx.globalAlpha=isPast?0.24:(isCurrent?1:0.84);
       sctx.fillStyle=isCurrent?accent:text;
 
-      const r=clamp(cssW*0.010,5,8);
+      const r=clamp(cssW*0.010,5,9);
       sctx.beginPath();
       sctx.ellipse(x,y,r*1.25,r,-0.35,0,Math.PI*2);
       sctx.fill();
@@ -1200,7 +1232,7 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
       sctx.stroke();
 
       sctx.fillStyle=muted;
-      sctx.font=`900 ${clamp(cssW*0.020,12,16)}px system-ui`;
+      sctx.font=`900 ${clamp(cssW*0.018,12,16)}px system-ui`;
       sctx.fillText(n.label, x+10, y+5);
       sctx.fillText(`(${n.fingerText})`, x+10, y+22);
 
@@ -1212,7 +1244,26 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
     sctx.fillText("Sheet view is simplified (spacing-first).", left, cssH-10);
   }
 
-  // ---- Init ----
+  // Learn / mic stop
+  function stopPreview(silent){
+    previewIsPlaying=false;
+    previewPlayBtn.disabled=false;
+
+    if(previewTimer) clearInterval(previewTimer);
+    previewTimer=null;
+
+    previewPausedSongTime=0;
+    if(previewCtx){ try{previewCtx.close();}catch{} previewCtx=null; }
+
+    currentIdx=loop.enabled?loop.start:0;
+    visualTime=notes[currentIdx]?.t ?? 0;
+    updateTargetReadout();
+    drawFalling(); drawSheet();
+
+    if(!silent && notes.length) setStatus("Preview stopped.");
+  }
+
+  // Init
   function disableAll(){
     enableControls(false);
     tempoDownBtn.disabled=true;
@@ -1226,6 +1277,9 @@ import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsde
 
     const isPhone = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
     setSettingsOpen(!isPhone);
+
+    // ✅ Collapse readout by default on phones (you can expand it when needed)
+    if (isPhone) readoutDetails.open = false;
 
     applyViewVisibility();
     resizeCanvases();
