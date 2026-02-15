@@ -6,10 +6,7 @@
   <meta name="theme-color" content="#111111" />
   <title>ViolinAI — Falling Notes</title>
 
-  <!-- IMPORTANT:
-       If you have a <link rel="stylesheet" href="style.css"> in your repo,
-       either delete it or comment it out, OR make sure it doesn't override .btn / --accent.
-       v13.1 expects styling to come from this file. -->
+  <!-- If you have an old style.css linked, remove/comment it out to avoid overrides. -->
 
   <style>
     :root{
@@ -43,7 +40,7 @@
       --danger:#ff4d6d;
       --gridGap:12px;
 
-      --fallingMinGap: 64px;
+      --fallingMinGap: 74px; /* more vertical spacing */
     }
 
     html[data-theme="light"]{
@@ -89,7 +86,7 @@
 
     .brand{
       display:flex;
-      align-items:baseline;
+      align-items:center;
       gap:10px;
       font-weight:900;
       letter-spacing:.2px;
@@ -149,6 +146,7 @@
       gap:10px;
       user-select:none;
       -webkit-tap-highlight-color: transparent;
+      white-space:nowrap;
     }
     .btn:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
     .btn.primary{
@@ -164,8 +162,8 @@
     .btn .ico{ width:18px;height:18px;display:inline-block;flex:0 0 18px; }
 
     .btn.big{
-      height: calc(var(--pillH) * 1.5);
-      padding: 0 calc(var(--pillPadX) * 1.25);
+      height: 60px;
+      padding: 0 18px;
       font-size: 16px;
     }
 
@@ -262,14 +260,8 @@
       background: var(--canvas);
     }
 
-    #sheetScroll{
-      overflow-x:hidden;
-      overflow-y:auto;
-      max-height: 54vh;
-    }
-    @media (max-width: 520px){
-      #sheetScroll{ max-height: 44vh; }
-    }
+    /* No scroll container for sheet; we show a forward-looking window */
+    #sheetScroll{ overflow: hidden; }
 
     .statusRow{
       display:flex;
@@ -363,6 +355,24 @@
     @media (max-width: 640px){
       .readoutGrid{ grid-template-columns: 1fr; }
     }
+
+    /* Transport: force single-row, 4 equal buttons on small phones */
+    @media (max-width: 520px){
+      .transportRow{
+        display:grid !important;
+        grid-template-columns: repeat(4, 1fr);
+        gap:10px;
+        align-items:stretch;
+      }
+      .transportRow .btn.big{
+        width:100%;
+        height:56px;
+        padding:0 10px;
+        font-size:14px;
+        gap:8px;
+      }
+      .transportRow .btn.big .ico{ width:18px;height:18px; }
+    }
   </style>
 </head>
 
@@ -370,8 +380,9 @@
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
+        <img src="icon-192.png" alt="" style="width:34px;height:34px;border-radius:10px;box-shadow:var(--shadow2);" />
         <div>ViolinAI</div>
-        <div class="tag">v13.1</div>
+        <div class="tag">v14</div>
       </div>
       <button id="settingsBtn" class="btn settingsBtn ripple" title="Settings" aria-expanded="false">
         <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -381,35 +392,36 @@
       </button>
     </div>
 
-    <!-- Transport row: back OUTSIDE settings -->
+    <!-- Transport row (always visible) -->
     <div class="card">
       <div class="bd">
-        <div class="pillRow">
-          <button id="previewPlayBtn" class="btn big primary ripple">
+        <div class="pillRow transportRow">
+          <button id="playBtn" class="btn big primary ripple" title="Play (Preview mode)">
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Play
           </button>
-          <button id="previewPauseBtn" class="btn big ripple">
+          <button id="pauseBtn" class="btn big ripple" title="Pause">
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
             Pause
           </button>
-          <button id="previewStopBtn" class="btn big ripple">
+          <button id="stopBtn" class="btn big ripple" title="Stop">
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
             Stop
           </button>
-          <button id="testSoundBtn" class="btn big ripple">
+          <button id="testBtn" class="btn big ripple" title="Test sound">
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10zm13.5 2a3.5 3.5 0 0 0-2.5-3.35v6.7A3.5 3.5 0 0 0 16.5 12zm0-7a8.5 8.5 0 0 1 0 14v-2a6.5 6.5 0 0 0 0-10z"/></svg>
             Test
           </button>
-          <button id="startMicBtn" class="btn big primary ripple" style="display:none;">
+
+          <button id="micBtn" class="btn big primary ripple" title="Start Mic (Learn mode)" style="display:none;">
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
-            Start Mic
+            Mic
           </button>
         </div>
       </div>
       <div class="statusRow">
         <div id="status">Loading…</div>
-        <div style="opacity:.8;">Tip: iPhone silent switch can mute preview audio.</div>
+        <div style="opacity:.8;">If iPhone is silent: check silent switch + volume + Bluetooth.</div>
       </div>
     </div>
 
@@ -492,11 +504,11 @@
               <div class="pillRow">
                 <label class="chkPill">
                   <span style="font-weight:900;">Tolerance (cents)</span>
-                  <input id="tolCents" type="number" min="10" max="80" value="35" style="width:74px;" />
+                  <input id="tolCents" type="number" min="10" max="100" value="45" style="width:74px;" />
                 </label>
                 <label class="chkPill">
                   <input id="waitMode" type="checkbox" checked />
-                  <span style="font-weight:900;">Require stable note</span>
+                  <span style="font-weight:900;">Require stable</span>
                 </label>
               </div>
             </div>
@@ -512,6 +524,8 @@
             <div class="kv"><div class="k">Heard</div><div class="v" id="heardTxt">—</div></div>
             <div class="kv"><div class="k">Clarity</div><div class="v" id="clarityTxt">—</div></div>
             <div class="kv"><div class="k">Delta</div><div class="v" id="deltaTxt">—</div></div>
+            <div class="kv"><div class="k">Input level (RMS)</div><div class="v" id="levelTxt">—</div></div>
+            <div class="kv"><div class="k">Mic status</div><div class="v" id="micStatusTxt">—</div></div>
           </div>
         </details>
       </div>
@@ -534,8 +548,9 @@
     </div>
   </div>
 
+  <!-- MIDI parser provides global Midi -->
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-  <script type="module" src="app.js?v=13.1"></script>
+
+  <script type="module" src="app.js?v=14"></script>
 </body>
 </html>
