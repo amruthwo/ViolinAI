@@ -1,8 +1,8 @@
-const CACHE = "violinai-v13";
+const CACHE = "violinai-v13.1";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=13",
+  "./app.js?v=13.1",
 ];
 
 self.addEventListener("install", (event) => {
@@ -23,18 +23,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.origin !== location.origin) return; // don't cache CDN libs
-
+  if (url.origin !== location.origin) return;
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
       const cached = await cache.match(event.request);
       if (cached) return cached;
-
       const res = await fetch(event.request);
-      if (event.request.method === "GET" && res.ok) {
-        cache.put(event.request, res.clone()).catch(() => {});
-      }
+      if (event.request.method === "GET" && res.ok) cache.put(event.request, res.clone()).catch(() => {});
       return res;
     })()
   );
