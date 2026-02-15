@@ -4,6 +4,31 @@
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   const $ = (id) => document.getElementById(id);
 
+  // ---- Ripple wiring (Material-style) ----
+  function addRipples() {
+    const els = document.querySelectorAll(".ripple");
+    for (const el of els) {
+      el.addEventListener("pointerdown", (ev) => {
+        if (el.disabled) return;
+
+        const rect = el.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height) * 2.1;
+
+        const ink = document.createElement("span");
+        ink.className = "ripple-ink";
+        ink.style.width = ink.style.height = `${size}px`;
+
+        const x = ev.clientX - rect.left - size / 2;
+        const y = ev.clientY - rect.top - size / 2;
+        ink.style.left = `${x}px`;
+        ink.style.top = `${y}px`;
+
+        el.appendChild(ink);
+        ink.addEventListener("animationend", () => ink.remove(), { once: true });
+      }, { passive: true });
+    }
+  }
+
   // UI
   const scoreFileEl = $("scoreFile");
   const statusEl = $("status");
@@ -74,7 +99,7 @@
   let bpm = 120;
   let keySig = null;
 
-  let baseNotes = []; // [{t, dur, midi}]
+  let baseNotes = [];
   let notes = [];
   let currentIdx = 0;
 
@@ -100,7 +125,6 @@
   // ---- helpers ----
   function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
   function setStatus(msg){ statusEl.textContent = msg; }
-
   function midiToHz(m){ return 440 * Math.pow(2, (m - 69) / 12); }
   function noteName(midi){
     const names=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -144,9 +168,7 @@
     settingsPanel.hidden = !open;
     settingsBtn.setAttribute("aria-expanded", open ? "true":"false");
   }
-  settingsBtn.addEventListener("click", ()=>{
-    setSettingsOpen(settingsPanel.hidden);
-  });
+  settingsBtn.addEventListener("click", ()=> setSettingsOpen(settingsPanel.hidden));
 
   // ---- Platform + theming ----
   function detectPlatform() {
@@ -553,26 +575,21 @@
     }
   });
 
-  // ---- Loop controls ----
+  // ---- Loop ----
   function updateLoopReadout(){
     if(!loop.enabled) loopRead.textContent="Loop: off";
     else loopRead.textContent=`Loop: ${loop.start+1} → ${loop.end+1}`;
   }
   loopStartBtn.addEventListener("click", ()=>{
-    loop.start=currentIdx;
-    loop.end=Math.max(loop.end, loop.start);
-    loop.enabled=true;
-    updateLoopReadout();
+    loop.start=currentIdx; loop.end=Math.max(loop.end, loop.start);
+    loop.enabled=true; updateLoopReadout();
   });
   loopEndBtn.addEventListener("click", ()=>{
-    loop.end=currentIdx;
-    loop.start=Math.min(loop.start, loop.end);
-    loop.enabled=true;
-    updateLoopReadout();
+    loop.end=currentIdx; loop.start=Math.min(loop.start, loop.end);
+    loop.enabled=true; updateLoopReadout();
   });
   loopClearBtn.addEventListener("click", ()=>{
-    loop.enabled=false;
-    updateLoopReadout();
+    loop.enabled=false; updateLoopReadout();
   });
 
   function loopTimes(){
@@ -667,7 +684,7 @@
     requestAnimationFrame(learnLoop);
   }
 
-  // ---- Preview audio: more violin-like synth ----
+  // ---- Preview audio (violin-ish synth) ----
   function ensurePreviewCtx(){
     if(!previewCtx) previewCtx = new (window.AudioContext || window.webkitAudioContext)();
     previewCtx.resume?.();
@@ -690,7 +707,6 @@
     o.start(atTime); o.stop(atTime+0.06);
   }
 
-  // Bowed-ish synth: two detuned saws + filter + envelope + vibrato
   function playViolinSynth(freq, atTime, dur){
     const t0 = atTime;
     const t1 = atTime + Math.max(0.08, dur);
@@ -699,12 +715,10 @@
     const f = previewCtx.createBiquadFilter();
     const comp = previewCtx.createDynamicsCompressor();
 
-    // filter
     f.type = "lowpass";
-    f.frequency.setValueAtTime(Math.min(9000, Math.max(1200, freq*6)), t0);
-    f.Q.setValueAtTime(0.8, t0);
+    f.frequency.setValueAtTime(Math.min(9000, Math.max(1400, freq*6)), t0);
+    f.Q.setValueAtTime(0.85, t0);
 
-    // envelope (bow: slower attack than pluck)
     const attack = 0.045;
     const release = 0.09;
     const sustain = 0.22;
@@ -714,7 +728,6 @@
     g.gain.setValueAtTime(sustain, Math.max(t0 + attack, t1 - release));
     g.gain.exponentialRampToValueAtTime(0.0001, t1);
 
-    // oscillators
     const o1 = previewCtx.createOscillator();
     const o2 = previewCtx.createOscillator();
     o1.type = "sawtooth";
@@ -724,24 +737,21 @@
     o1.detune.setValueAtTime(-7, t0);
     o2.detune.setValueAtTime(+7, t0);
 
-    // subtle vibrato LFO
     const lfo = previewCtx.createOscillator();
     const lfoGain = previewCtx.createGain();
     lfo.type = "sine";
     lfo.frequency.setValueAtTime(5.5, t0);
-    lfoGain.gain.setValueAtTime(12, t0); // cents-ish detune depth
+    lfoGain.gain.setValueAtTime(12, t0);
     lfo.connect(lfoGain);
     lfoGain.connect(o1.detune);
     lfoGain.connect(o2.detune);
 
-    // chain
     o1.connect(f);
     o2.connect(f);
     f.connect(comp);
     comp.connect(g);
     g.connect(previewCtx.destination);
 
-    // start/stop
     lfo.start(t0);
     o1.start(t0);
     o2.start(t0);
@@ -755,7 +765,6 @@
   testSoundBtn.addEventListener("click", ()=>{
     ensurePreviewCtx();
     const t=previewCtx.currentTime+0.06;
-    // little violin-ish arpeggio
     playViolinSynth(440, t, 0.28);
     playViolinSynth(659.25, t+0.32, 0.28);
     playViolinSynth(880, t+0.64, 0.28);
@@ -1080,6 +1089,116 @@
     sctx.fillText("Sheet view is simplified (spacing-first).", left, cssH-10);
   }
 
+  // ---- Preview controls ----
+  function stopPreview(silent){
+    previewIsPlaying=false;
+    previewPlayBtn.disabled=false;
+
+    if(previewTimer) clearInterval(previewTimer);
+    previewTimer=null;
+
+    previewPausedSongTime=0;
+    if(previewCtx){ try{previewCtx.close();}catch{} previewCtx=null; }
+
+    currentIdx=loop.enabled?loop.start:0;
+    visualTime=notes[currentIdx]?.t ?? 0;
+    updateTargetReadout();
+    drawFalling(); drawSheet();
+
+    if(!silent && notes.length) setStatus("Preview stopped.");
+  }
+
+  function pausePreview(){
+    if(!previewIsPlaying) return;
+    previewIsPlaying=false;
+    previewPlayBtn.disabled=false;
+
+    if(previewTimer) clearInterval(previewTimer);
+    previewTimer=null;
+
+    const elapsed=(performance.now()-previewStartPerf)/1000;
+    const songTime=(elapsed-previewCountInSec)+(previewPausedSongTime||0);
+    previewPausedSongTime=Math.max(0,songTime);
+
+    if(previewCtx){ try{previewCtx.close();}catch{} previewCtx=null; }
+    setStatus("Preview paused.");
+  }
+
+  // startPreview uses playViolinSynth (same as v9)
+  function startPreview(){
+    if(!notes.length) return;
+
+    stopMic();
+    ensurePreviewCtx();
+
+    previewIsPlaying=true;
+    previewPlayBtn.disabled=true;
+
+    const spb=60/bpm;
+    const countInBeats=clamp(parseInt(countInEl.value||"0",10),0,8);
+    previewCountInSec=countInBeats*spb;
+
+    const now=previewCtx.currentTime;
+    for(let i=0;i<countInBeats;i++) playClick(now+i*spb);
+
+    const startSongTime=previewPausedSongTime||0;
+    for(const n of notes){
+      if(n.t<startSongTime) continue;
+      const at=now+previewCountInSec+(n.t-startSongTime);
+      playViolinSynth(n.hz, at, clamp(n.dur,0.10,1.4));
+    }
+
+    if(metroOnEl.checked){
+      const endSong=(notes[notes.length-1]?.t ?? 0)+1.0;
+      const total=previewCountInSec+Math.max(0,endSong-startSongTime)+1.0;
+      const beats=Math.ceil(total/spb);
+      for(let i=0;i<beats;i++) playClick(now+i*spb);
+    }
+
+    previewStartPerf=performance.now();
+
+    if(previewTimer) clearInterval(previewTimer);
+    previewTimer=setInterval(()=>{
+      const elapsed=(performance.now()-previewStartPerf)/1000;
+      const songTime=(elapsed-previewCountInSec)+(previewPausedSongTime||0);
+      visualTime=Math.max(0,songTime);
+
+      if(songTime<0){ drawFalling(); drawSheet(); return; }
+
+      while(currentIdx<notes.length-1 && notes[currentIdx+1].t<=visualTime) currentIdx++;
+      updateTargetReadout();
+
+      const lt=loopTimes();
+      if(lt && visualTime>=lt.tEnd){
+        previewPausedSongTime=lt.tStart;
+        currentIdx=loop.start;
+        stopPreview(true);
+        startPreview();
+        return;
+      }
+
+      drawFalling(); drawSheet();
+
+      const endTime=(notes[notes.length-1]?.t ?? 0)+1.5;
+      if(!lt && visualTime>endTime) stopPreview(false);
+    }, 30);
+
+    setStatus(countInBeats ? `Count-in: ${countInBeats}… then playing.` : "Preview playing…");
+  }
+
+  previewPlayBtn.addEventListener("click", startPreview);
+  previewPauseBtn.addEventListener("click", pausePreview);
+  previewStopBtn.addEventListener("click", ()=>stopPreview(false));
+
+  // ---- Mic stop helper ----
+  function stopMic(){
+    micRunning=false;
+    if(audioCtx){ try{audioCtx.close();}catch{} }
+    audioCtx=null; analyser=null; sourceNode=null; pitchDetector=null; floatBuf=null;
+    heardTxt.textContent="—"; clarityTxt.textContent="—"; deltaTxt.textContent="—";
+    lastGoodMs=0;
+  }
+
   // ---- Init ----
   function disableAll(){
     enableControls(false);
@@ -1090,6 +1209,7 @@
   function init(){
     loadThemePref();
     loadDesignPref();
+    addRipples();
 
     const isPhone = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
     setSettingsOpen(!isPhone);
