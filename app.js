@@ -1,5 +1,7 @@
 /* global Midi, pitchy */
 
+import { argbFromHex, hexFromArgb, themeFromSourceColor } from "https://cdn.jsdelivr.net/npm/@material/material-color-utilities@0.4.0/index.js";
+
 (function () {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   const $ = (id) => document.getElementById(id);
@@ -65,6 +67,9 @@
   const themeBtn = $("themeBtn");
   const designSelect = $("designSelect");
 
+  const m3ShuffleBtn = $("m3ShuffleBtn");
+  const m3SeedTxt = $("m3SeedTxt");
+
   const settingsBtn = $("settingsBtn");
   const settingsPanel = $("settingsPanel");
 
@@ -122,7 +127,17 @@
   let previewIsPlaying = false;
   let previewCountInSec = 0;
 
-  // ---- helpers ----
+  // ---- M3 Seed palette ----
+  // These are “seed-ish” hues commonly used in Material 3 examples/baselines.
+  // We’re using MCU to generate the real tonal scheme from them.
+  const M3_SEEDS = [
+    "#6750A4", // baseline purple (very common in M3 examples)
+    "#006874", // teal/cyan family
+    "#386A20", // green family
+    "#B3261E", // warm red family
+    "#7D5260"  // rose/mauve family
+  ];
+
   function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
   function setStatus(msg){ statusEl.textContent = msg; }
   function midiToHz(m){ return 440 * Math.pow(2, (m - 69) / 12); }
@@ -133,35 +148,6 @@
     return `${n}${oct}`;
   }
   function centsOff(freq, targetHz){ return 1200 * Math.log2(freq/targetHz); }
-
-  function chooseStringIndex(midi, prevStringIndex=null){
-    const candidates=[];
-    for(let i=0;i<STRINGS.length;i++){
-      const semi=midi-STRINGS[i].open;
-      if(semi>=0 && semi<=7) candidates.push({i,semi});
-    }
-    if(!candidates.length) return null;
-    candidates.sort((a,b)=>{
-      const aStay = prevStringIndex===a.i ? -0.2 : 0;
-      const bStay = prevStringIndex===b.i ? -0.2 : 0;
-      return (a.semi+aStay)-(b.semi+bStay);
-    });
-    return candidates[0].i;
-  }
-  function fingerTextForSemi(semi){
-    if(semi<=0) return "0";
-    const map={1:"1L",2:"1",3:"2L",4:"2",5:"3",6:"4L",7:"4"};
-    return map[semi] || "";
-  }
-  function laneLabel(n){
-    if(!n) return "—";
-    const lane = n.stringIndex==null ? "?" : STRINGS[n.stringIndex].name;
-    return `${n.label} (${lane} string, ${n.fingerText})`;
-  }
-  function updateTargetReadout(){
-    const n=notes[currentIdx];
-    targetTxt.textContent = n ? laneLabel(n) : "Done!";
-  }
 
   // ---- Settings drawer toggle ----
   function setSettingsOpen(open){
@@ -178,11 +164,102 @@
     return { isIOS, isAndroid };
   }
 
+  // ---- Material scheme application (seed -> CSS vars) ----
+  // M3's seed->scheme model is powered by Material Color Utilities. :contentReference[oaicite:3]{index=3}
+  function applyMaterialSchemeFromSeed(seedHex) {
+    const theme = themeFromSourceColor(argbFromHex(seedHex));
+    const isDark = (document.documentElement.getAttribute("data-theme") || "dark") === "dark";
+    const scheme = isDark ? theme.schemes.dark : theme.schemes.light;
+
+    // Map scheme roles -> our CSS custom properties
+    // Note: we keep “classic/liquid” untouched; these overrides only matter in resolved Material design.
+    const root = document.documentElement.style;
+
+    const primary = hexFromArgb(scheme.primary);
+    const secondary = hexFromArgb(scheme.secondary);
+    const tertiary = hexFromArgb(scheme.tertiary);
+    const error = hexFromArgb(scheme.error);
+
+    const bg = hexFromArgb(scheme.background);
+    const surface = hexFromArgb(scheme.surface);
+    const surface2 = hexFromArgb(scheme.surfaceContainerHigh ?? scheme.surfaceContainer ?? scheme.surface);
+    const outline = hexFromArgb(scheme.outline);
+
+    const onSurface = hexFromArgb(scheme.onSurface);
+
+    // App palette anchors
+    root.setProperty("--accent", primary);
+    root.setProperty("--accent3", secondary);
+    root.setProperty("--accent2", tertiary);
+    root.setProperty("--accent4", error);
+
+    // Surfaces + borders + text
+    root.setProperty("--bg", bg);
+    root.setProperty("--canvas", surface);
+    root.setProperty("--lane", surface2);
+
+    root.setProperty("--surface", surface);
+    root.setProperty("--surface2", surface2);
+    root.setProperty("--border", outline);
+
+    root.setProperty("--text", onSurface);
+    // A nice “muted” derived from onSurface
+    root.setProperty("--muted", isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.62)");
+  }
+
+  function clearMaterialOverrides() {
+    // Remove only what we set
+    const root = document.documentElement.style;
+    for (const k of [
+      "--accent","--accent2","--accent3","--accent4",
+      "--bg","--canvas","--lane","--surface","--surface2","--border","--text","--muted"
+    ]) root.removeProperty(k);
+  }
+
+  function getSeedIndex() {
+    const raw = localStorage.getItem("vfn_m3_seed_idx");
+    const i = raw == null ? NaN : parseInt(raw, 10);
+    return Number.isFinite(i) ? clamp(i, 0, M3_SEEDS.length - 1) : null;
+  }
+
+  function setSeedIndex(i) {
+    localStorage.setItem("vfn_m3_seed_idx", String(i));
+    const seed = M3_SEEDS[i];
+    m3SeedTxt.textContent = seed;
+    applyMaterialSchemeFromSeed(seed);
+  }
+
+  function ensureSeedChosen() {
+    let idx = getSeedIndex();
+    if (idx == null) {
+      idx = Math.floor(Math.random() * M3_SEEDS.length);
+      localStorage.setItem("vfn_m3_seed_idx", String(idx));
+    }
+    return idx;
+  }
+
+  // ---- Design selection / auto resolve ----
+  let resolvedDesign = "material";
+
   function applyDesign(design) {
     const plat = detectPlatform();
-    let resolved = design;
-    if (design === "auto") resolved = plat.isIOS ? "liquid" : "material";
-    document.documentElement.setAttribute("data-design", resolved);
+    resolvedDesign = design;
+    if (design === "auto") resolvedDesign = plat.isIOS ? "liquid" : "material";
+
+    document.documentElement.setAttribute("data-design", resolvedDesign);
+
+    // Show shuffle button only in Material mode
+    const showShuffle = resolvedDesign === "material";
+    m3ShuffleBtn.hidden = !showShuffle;
+
+    if (showShuffle) {
+      const idx = ensureSeedChosen();
+      setSeedIndex(idx);
+    } else {
+      // Don't force M3 overrides into other themes
+      clearMaterialOverrides();
+      m3SeedTxt.textContent = "—";
+    }
   }
 
   function loadDesignPref() {
@@ -195,6 +272,15 @@
     const v = designSelect.value;
     localStorage.setItem("vfn_design", v);
     applyDesign(v);
+    drawFalling(); drawSheet();
+  });
+
+  m3ShuffleBtn.addEventListener("click", () => {
+    if (resolvedDesign !== "material") return;
+    let idx = ensureSeedChosen();
+    idx = (idx + 1) % M3_SEEDS.length;
+    setSeedIndex(idx);
+    drawFalling(); drawSheet();
   });
 
   function setTheme(theme){
@@ -202,13 +288,21 @@
     themeBtn.textContent = theme==="dark" ? "🌙 Dark" : "☀️ Light";
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f4f6ff");
+
+    // Recompute M3 scheme for light/dark switch
+    if (resolvedDesign === "material") {
+      const idx = ensureSeedChosen();
+      setSeedIndex(idx);
+    }
+
     drawFalling(); drawSheet();
   }
 
   themeBtn.addEventListener("click", ()=>{
     const cur=document.documentElement.getAttribute("data-theme")||"dark";
-    setTheme(cur==="dark"?"light":"dark");
-    localStorage.setItem("vfn_theme", document.documentElement.getAttribute("data-theme"));
+    const next = cur==="dark"?"light":"dark";
+    setTheme(next);
+    localStorage.setItem("vfn_theme", next);
   });
 
   function loadThemePref() {
@@ -325,6 +419,35 @@
     const i=closestTempoIndex(tempoMul);
     setTempoMul(TEMPO_STEPS[Math.min(TEMPO_STEPS.length-1, i+1)]);
   });
+
+  function chooseStringIndex(midi, prevStringIndex=null){
+    const candidates=[];
+    for(let i=0;i<STRINGS.length;i++){
+      const semi=midi-STRINGS[i].open;
+      if(semi>=0 && semi<=7) candidates.push({i,semi});
+    }
+    if(!candidates.length) return null;
+    candidates.sort((a,b)=>{
+      const aStay = prevStringIndex===a.i ? -0.2 : 0;
+      const bStay = prevStringIndex===b.i ? -0.2 : 0;
+      return (a.semi+aStay)-(b.semi+bStay);
+    });
+    return candidates[0].i;
+  }
+  function fingerTextForSemi(semi){
+    if(semi<=0) return "0";
+    const map={1:"1L",2:"1",3:"2L",4:"2",5:"3",6:"4L",7:"4"};
+    return map[semi] || "";
+  }
+  function laneLabel(n){
+    if(!n) return "—";
+    const lane = n.stringIndex==null ? "?" : STRINGS[n.stringIndex].name;
+    return `${n.label} (${lane} string, ${n.fingerText})`;
+  }
+  function updateTargetReadout(){
+    const n=notes[currentIdx];
+    targetTxt.textContent = n ? laneLabel(n) : "Done!";
+  }
 
   // Build notes from base times using current tempoMul
   function rebuildNotesFromBase(){
@@ -870,7 +993,7 @@
   previewPauseBtn.addEventListener("click", pausePreview);
   previewStopBtn.addEventListener("click", ()=>stopPreview(false));
 
-  // ---- Drawing (unchanged from your current) ----
+  // ---- Drawing (same as your current) ----
   function roundRect(c,x,y,w,h,r){
     const rr=Math.min(r,w/2,h/2);
     c.beginPath();
@@ -1087,116 +1210,6 @@
     sctx.fillStyle=muted;
     sctx.font=`700 ${Math.max(12, cssW*0.016)}px system-ui`;
     sctx.fillText("Sheet view is simplified (spacing-first).", left, cssH-10);
-  }
-
-  // ---- Preview controls ----
-  function stopPreview(silent){
-    previewIsPlaying=false;
-    previewPlayBtn.disabled=false;
-
-    if(previewTimer) clearInterval(previewTimer);
-    previewTimer=null;
-
-    previewPausedSongTime=0;
-    if(previewCtx){ try{previewCtx.close();}catch{} previewCtx=null; }
-
-    currentIdx=loop.enabled?loop.start:0;
-    visualTime=notes[currentIdx]?.t ?? 0;
-    updateTargetReadout();
-    drawFalling(); drawSheet();
-
-    if(!silent && notes.length) setStatus("Preview stopped.");
-  }
-
-  function pausePreview(){
-    if(!previewIsPlaying) return;
-    previewIsPlaying=false;
-    previewPlayBtn.disabled=false;
-
-    if(previewTimer) clearInterval(previewTimer);
-    previewTimer=null;
-
-    const elapsed=(performance.now()-previewStartPerf)/1000;
-    const songTime=(elapsed-previewCountInSec)+(previewPausedSongTime||0);
-    previewPausedSongTime=Math.max(0,songTime);
-
-    if(previewCtx){ try{previewCtx.close();}catch{} previewCtx=null; }
-    setStatus("Preview paused.");
-  }
-
-  // startPreview uses playViolinSynth (same as v9)
-  function startPreview(){
-    if(!notes.length) return;
-
-    stopMic();
-    ensurePreviewCtx();
-
-    previewIsPlaying=true;
-    previewPlayBtn.disabled=true;
-
-    const spb=60/bpm;
-    const countInBeats=clamp(parseInt(countInEl.value||"0",10),0,8);
-    previewCountInSec=countInBeats*spb;
-
-    const now=previewCtx.currentTime;
-    for(let i=0;i<countInBeats;i++) playClick(now+i*spb);
-
-    const startSongTime=previewPausedSongTime||0;
-    for(const n of notes){
-      if(n.t<startSongTime) continue;
-      const at=now+previewCountInSec+(n.t-startSongTime);
-      playViolinSynth(n.hz, at, clamp(n.dur,0.10,1.4));
-    }
-
-    if(metroOnEl.checked){
-      const endSong=(notes[notes.length-1]?.t ?? 0)+1.0;
-      const total=previewCountInSec+Math.max(0,endSong-startSongTime)+1.0;
-      const beats=Math.ceil(total/spb);
-      for(let i=0;i<beats;i++) playClick(now+i*spb);
-    }
-
-    previewStartPerf=performance.now();
-
-    if(previewTimer) clearInterval(previewTimer);
-    previewTimer=setInterval(()=>{
-      const elapsed=(performance.now()-previewStartPerf)/1000;
-      const songTime=(elapsed-previewCountInSec)+(previewPausedSongTime||0);
-      visualTime=Math.max(0,songTime);
-
-      if(songTime<0){ drawFalling(); drawSheet(); return; }
-
-      while(currentIdx<notes.length-1 && notes[currentIdx+1].t<=visualTime) currentIdx++;
-      updateTargetReadout();
-
-      const lt=loopTimes();
-      if(lt && visualTime>=lt.tEnd){
-        previewPausedSongTime=lt.tStart;
-        currentIdx=loop.start;
-        stopPreview(true);
-        startPreview();
-        return;
-      }
-
-      drawFalling(); drawSheet();
-
-      const endTime=(notes[notes.length-1]?.t ?? 0)+1.5;
-      if(!lt && visualTime>endTime) stopPreview(false);
-    }, 30);
-
-    setStatus(countInBeats ? `Count-in: ${countInBeats}… then playing.` : "Preview playing…");
-  }
-
-  previewPlayBtn.addEventListener("click", startPreview);
-  previewPauseBtn.addEventListener("click", pausePreview);
-  previewStopBtn.addEventListener("click", ()=>stopPreview(false));
-
-  // ---- Mic stop helper ----
-  function stopMic(){
-    micRunning=false;
-    if(audioCtx){ try{audioCtx.close();}catch{} }
-    audioCtx=null; analyser=null; sourceNode=null; pitchDetector=null; floatBuf=null;
-    heardTxt.textContent="—"; clarityTxt.textContent="—"; deltaTxt.textContent="—";
-    lastGoodMs=0;
   }
 
   // ---- Init ----
