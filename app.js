@@ -1,4 +1,6 @@
-/* global Midi, pitchy */
+/* v14: audio-master clock + rolling scheduler + smooth animation + fixed pitchy import */
+
+import { PitchDetector } from "https://esm.sh/pitchy@4.1.0";
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -17,11 +19,11 @@
   const showFallingEl = $("showFalling");
   const showSheetEl = $("showSheet");
 
-  const previewPlayBtn = $("previewPlayBtn");
-  const previewPauseBtn = $("previewPauseBtn");
-  const previewStopBtn = $("previewStopBtn");
-  const testSoundBtn = $("testSoundBtn");
-  const startMicBtn = $("startMicBtn");
+  const playBtn = $("playBtn");
+  const pauseBtn = $("pauseBtn");
+  const stopBtn = $("stopBtn");
+  const testBtn = $("testBtn");
+  const micBtn = $("micBtn");
 
   const tempoDownBtn = $("tempoDownBtn");
   const tempoUpBtn = $("tempoUpBtn");
@@ -56,10 +58,11 @@
   const heardTxt = $("heardTxt");
   const clarityTxt = $("clarityTxt");
   const deltaTxt = $("deltaTxt");
+  const levelTxt = $("levelTxt");
+  const micStatusTxt = $("micStatusTxt");
 
   const canvas = $("canvas");
   const sheetCanvas = $("sheetCanvas");
-  const sheetScroll = $("sheetScroll");
   const ctx = canvas.getContext("2d");
   const sctx = sheetCanvas.getContext("2d");
 
@@ -109,7 +112,6 @@
   let resolvedDesign = "auto";
   const M3_SEEDS = ["#6750A4", "#006874", "#386A20", "#B3261E", "#D97900"];
 
-  // CSS vars that Material overrides inline (must be removed when leaving Material)
   const MATERIAL_VARS = [
     "--accent","--accent2","--accent3","--accent4",
     "--bg","--surface","--surface2","--canvas","--lane",
@@ -126,8 +128,7 @@
     try {
       MCU = await import("https://cdn.jsdelivr.net/npm/@material/material-color-utilities@0.4.0/index.js");
       return MCU;
-    } catch (e) {
-      console.warn("Material color utilities failed to load; using fallback seed accent.", e);
+    } catch {
       MCU = null;
       return null;
     }
@@ -166,7 +167,6 @@
     const mcu = await ensureMCU();
 
     if (!mcu) {
-      // fallback: change accent only (still visible!)
       root.setProperty("--accent", seedHex);
       m3SeedTxt.textContent = `${seedHex} (fallback)`;
       return;
@@ -246,12 +246,9 @@
   async function setSeedIndex(i) {
     localStorage.setItem("vfn_m3_seed_idx", String(i));
     updateSeedDots(i);
-
-    // only apply seed if Material is active
     if (resolvedDesign === "material") {
       await applyMaterialSchemeFromSeed(M3_SEEDS[i]);
-      // Safari repaint nudge
-      document.body.offsetHeight;
+      document.body.offsetHeight; // Safari repaint nudge
     } else {
       m3SeedTxt.textContent = "—";
     }
@@ -274,7 +271,6 @@
       updateSeedDots(idx);
       m3SeedTxt.textContent = M3_SEEDS[idx];
     } else {
-      // critical: remove Material inline overrides so Liquid/Classic get their own palette
       clearMaterialOverrides();
       m3SeedTxt.textContent = "—";
     }
@@ -337,13 +333,13 @@
   let baseNotes = [];
   let notes = [];
   let currentIdx = 0;
-  let visualTime = 0;
 
   let loop = { enabled: false, start: 0, end: 0 };
 
   let dpr = 1;
 
   function setStatus(msg) { statusEl.textContent = msg; }
+
   function midiToHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
   function noteName(midi) {
     const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -376,8 +372,8 @@
     }
     if (!candidates.length) return null;
     candidates.sort((a, b) => {
-      const aStay = prevStringIndex === a.i ? -0.2 : 0;
-      const bStay = prevStringIndex === b.i ? -0.2 : 0;
+      const aStay = prevStringIndex === a.i ? -0.25 : 0;
+      const bStay = prevStringIndex === b.i ? -0.25 : 0;
       return (a.semi + aStay) - (b.semi + bStay);
     });
     return candidates[0].i;
@@ -406,11 +402,11 @@
   }
 
   function enableControls(on) {
-    previewPlayBtn.disabled = !on;
-    previewPauseBtn.disabled = !on;
-    previewStopBtn.disabled = !on;
-    testSoundBtn.disabled = !on;
-    startMicBtn.disabled = !on;
+    playBtn.disabled = !on;
+    pauseBtn.disabled = !on;
+    stopBtn.disabled = !on;
+    testBtn.disabled = !on;
+    micBtn.disabled = !on;
     tempoDownBtn.disabled = !on;
     tempoUpBtn.disabled = !on;
     loopStartBtn.disabled = !on;
@@ -459,24 +455,23 @@
     modeLearnBtn.classList.toggle("active", mode === "learn");
     learnOnlyRow.style.display = mode === "learn" ? "" : "none";
 
-    startMicBtn.style.display = mode === "learn" ? "" : "none";
-    previewPlayBtn.style.display = mode === "preview" ? "" : "none";
-    previewPauseBtn.style.display = mode === "preview" ? "" : "none";
-    previewStopBtn.style.display = mode === "preview" ? "" : "none";
-    testSoundBtn.style.display = mode === "preview" ? "" : "none";
+    micBtn.style.display = mode === "learn" ? "" : "none";
 
     stopPreview(true);
     stopMic();
 
     if (notes.length) {
       setStatus(mode === "preview"
-        ? "Preview: Play to listen. If silent: Test + iPhone silent switch/volume/Bluetooth."
-        : "Learn: Start Mic, then play the target note to advance.");
+        ? "Preview: Play to listen. iPhone: silent switch/volume/Bluetooth."
+        : "Learn: Tap Mic, then play/whistle the target note to advance.");
     }
   }
   modePreviewBtn.addEventListener("click", () => setMode("preview"));
   modeLearnBtn.addEventListener("click", () => setMode("learn"));
 
+  // ---------------------------
+  // Layout / canvases
+  // ---------------------------
   function resizeCanvases() {
     dpr = window.devicePixelRatio || 1;
     const isPhone = window.matchMedia && window.matchMedia("(max-width: 520px)").matches;
@@ -491,14 +486,14 @@
     if (fallingPanel && fallingPanel.style.display !== "none") {
       const rect = fallingPanel.getBoundingClientRect();
       const cssW = Math.max(260, Math.floor(rect.width));
-      const cssH = isPhone ? Math.max(560, Math.floor(cssW * 1.12)) : Math.max(360, Math.floor(cssW * 0.68));
+      const cssH = isPhone ? Math.max(660, Math.floor(cssW * 1.30)) : Math.max(380, Math.floor(cssW * 0.70));
       sizeCanvas(canvas, cssW, cssH);
     }
 
     if (sheetPanel && sheetPanel.style.display !== "none") {
       const rect = sheetPanel.getBoundingClientRect();
       const cssW = Math.max(260, Math.floor(rect.width));
-      const cssH = isPhone ? Math.max(520, Math.floor(cssW * 1.00)) : Math.max(420, Math.floor(cssW * 0.72));
+      const cssH = isPhone ? Math.max(440, Math.floor(cssW * 0.86)) : Math.max(420, Math.floor(cssW * 0.72));
       sizeCanvas(sheetCanvas, cssW, cssH);
     }
   }
@@ -547,9 +542,7 @@
       });
     }
 
-    currentIdx = clamp(currentIdx, 0, Math.max(0, notes.length - 1));
-    visualTime = notes[currentIdx]?.t ?? 0;
-
+    currentIdx = 0;
     updateTargetReadout();
     updateLoopReadout();
 
@@ -583,9 +576,10 @@
   });
 
   // ---------------------------
-  // MIDI + MusicXML
+  // MIDI + MusicXML (same as v13.1-ish)
   // ---------------------------
   async function loadMidi(arrayBuffer) {
+    // Midi is global from ToneJS Midi script
     const midi = new Midi(arrayBuffer);
     const tempos = midi.header.tempos || [];
     bpm = tempos.length ? tempos[0].bpm : 120;
@@ -693,7 +687,7 @@
         const durEl = n.querySelector("duration");
         const durDiv = durEl ? parseInt(durEl.textContent, 10) : 0;
         const quarterLen = divisions > 0 ? durDiv / divisions : 0;
-        const durSec = Math.max(0.04, quarterLen * spq);
+        const durSec = Math.max(0.05, quarterLen * spq);
 
         const startSec = chord ? lastStartSec : curSec;
 
@@ -736,9 +730,6 @@
       stopPreview(true);
       stopMic();
 
-      // reset sheet scroll position after load
-      sheetScroll.scrollTop = 0;
-
       const name = (file.name || "").toLowerCase();
       if (name.endsWith(".mid") || name.endsWith(".midi")) {
         const ab = await file.arrayBuffer();
@@ -752,7 +743,6 @@
       keyTxt.textContent = keyNameFromSig(keySig);
 
       currentIdx = 0;
-      visualTime = 0;
 
       loop.enabled = false;
       loop.start = 0;
@@ -778,284 +768,407 @@
   });
 
   // ---------------------------
-  // Preview audio (unchanged from v13)
+  // Preview audio (v14): AudioContext master clock + rolling scheduler
   // ---------------------------
-  let previewCtx=null, previewTimer=null, previewStartPerf=0, previewPausedSongTime=0, previewIsPlaying=false, previewCountInSec=0;
+  let audioCtx = null;
 
-  function ensurePreviewCtx(){
-    if (!previewCtx) previewCtx = new (window.AudioContext || window.webkitAudioContext)();
-    previewCtx.resume?.();
+  // playback state
+  let isPlaying = false;
+  let isPaused = false;
+  let rafId = null;
+
+  // master clock mapping:
+  // songTime (sec) = audioCtx.currentTime - t0 + pausedSongTime
+  let t0 = 0;
+  let pausedSongTime = 0;
+
+  // scheduler
+  let schedTimer = null;
+  const LOOKAHEAD_MS = 25;
+  const SCHEDULE_AHEAD_SEC = 0.35;
+  let nextSchedIdx = 0;
+
+  // count-in bookkeeping
+  let countInSec = 0;
+
+  function ensureAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume?.();
   }
 
-  function playClick(atTime){
-    const o=previewCtx.createOscillator();
-    const g=previewCtx.createGain();
-    const f=previewCtx.createBiquadFilter();
-    o.type="square"; o.frequency.value=1600;
-    f.type="highpass"; f.frequency.setValueAtTime(800, atTime);
-
+  function playClick(atTime) {
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "square";
+    o.frequency.setValueAtTime(1600, atTime);
     g.gain.setValueAtTime(0.0001, atTime);
-    g.gain.exponentialRampToValueAtTime(0.25, atTime+0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, atTime+0.05);
-
-    o.connect(f); f.connect(g); g.connect(previewCtx.destination);
-    o.start(atTime); o.stop(atTime+0.06);
+    g.gain.exponentialRampToValueAtTime(0.20, atTime + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, atTime + 0.05);
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start(atTime);
+    o.stop(atTime + 0.06);
   }
 
-  function playViolinSynth(freq, atTime, dur){
-    const t0=atTime;
-    const t1=atTime + Math.max(0.10, dur);
+  // Simplified synth: sine + gentle envelope (iOS-friendly)
+  function playSine(freq, atTime, durSec) {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
 
-    const g=previewCtx.createGain();
-    const f=previewCtx.createBiquadFilter();
-    const comp=previewCtx.createDynamicsCompressor();
+    o.type = "sine";
+    o.frequency.setValueAtTime(freq, atTime);
 
-    f.type="lowpass";
-    f.frequency.setValueAtTime(Math.min(9000, Math.max(1400, freq*6)), t0);
-    f.Q.setValueAtTime(0.85, t0);
-
-    const attack=0.05, release=0.10, sustain=0.22;
+    const t0 = atTime;
+    const t1 = atTime + Math.max(0.10, durSec);
+    const a = 0.012;
+    const r = 0.060;
 
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(sustain, t0+attack);
-    g.gain.setValueAtTime(sustain, Math.max(t0+attack, t1-release));
+    g.gain.exponentialRampToValueAtTime(0.15, t0 + a);
+    g.gain.setValueAtTime(0.15, Math.max(t0 + a, t1 - r));
     g.gain.exponentialRampToValueAtTime(0.0001, t1);
 
-    const o1=previewCtx.createOscillator();
-    const o2=previewCtx.createOscillator();
-    o1.type="sawtooth"; o2.type="sawtooth";
-    o1.frequency.setValueAtTime(freq, t0);
-    o2.frequency.setValueAtTime(freq, t0);
-    o1.detune.setValueAtTime(-7, t0);
-    o2.detune.setValueAtTime(+7, t0);
+    o.connect(g);
+    g.connect(audioCtx.destination);
 
-    const lfo=previewCtx.createOscillator();
-    const lfoGain=previewCtx.createGain();
-    lfo.type="sine"; lfo.frequency.setValueAtTime(5.5, t0);
-    lfoGain.gain.setValueAtTime(12, t0);
-    lfo.connect(lfoGain);
-    lfoGain.connect(o1.detune);
-    lfoGain.connect(o2.detune);
-
-    o1.connect(f); o2.connect(f);
-    f.connect(comp); comp.connect(g); g.connect(previewCtx.destination);
-
-    lfo.start(t0); o1.start(t0); o2.start(t0);
-
-    const stopTime=t1+0.02;
-    o1.stop(stopTime); o2.stop(stopTime); lfo.stop(stopTime);
+    o.start(t0);
+    o.stop(t1 + 0.02);
   }
 
-  testSoundBtn.addEventListener("click", ()=>{
-    ensurePreviewCtx();
-    const t=previewCtx.currentTime+0.06;
-    playViolinSynth(440,t,0.28);
-    playViolinSynth(659.25,t+0.32,0.28);
-    playViolinSynth(880,t+0.64,0.28);
-    setStatus("Test sound played. If silent: iPhone silent switch/volume/Bluetooth.");
-  });
+  function getSongTimeNow() {
+    if (!audioCtx) return pausedSongTime;
+    const now = audioCtx.currentTime;
+    const raw = (now - t0) + pausedSongTime;
+    return raw; // includes negative during count-in (handled separately)
+  }
 
-  function startPreview(){
-    if (!notes.length) return;
-    stopMic();
-    ensurePreviewCtx();
+  function songTimeToAudioTime(songTime) {
+    // audio time corresponding to a given songTime (sec) from start (excluding count-in)
+    return t0 + (songTime - pausedSongTime);
+  }
 
-    previewIsPlaying=true;
-    previewPlayBtn.disabled=true;
-
-    const spb=60/bpm;
-    const countInBeats=clamp(parseInt(countInEl.value||"0",10),0,8);
-    previewCountInSec=countInBeats*spb;
-
-    const now=previewCtx.currentTime;
-    for (let i=0;i<countInBeats;i++) playClick(now + i*spb);
-
-    const startSongTime=previewPausedSongTime||0;
-
-    for (const n of notes){
-      if (n.t < startSongTime) continue;
-      const at = now + previewCountInSec + (n.t - startSongTime);
-      playViolinSynth(n.hz, at, clamp(n.dur, 0.10, 1.4));
+  function findStartIndexForSongTime(songTime) {
+    // find first note with t >= songTime (linear OK for now)
+    for (let i = 0; i < notes.length; i++) {
+      if (notes[i].t >= songTime - 0.001) return i;
     }
+    return notes.length;
+  }
 
-    if (metroOnEl.checked){
-      const endSong=(notes[notes.length-1]?.t??0)+1.0;
-      const total=previewCountInSec+Math.max(0,endSong-startSongTime)+1.0;
-      const beats=Math.ceil(total/spb);
-      for (let i=0;i<beats;i++) playClick(now+i*spb);
-    }
+  function scheduleNotesWindow() {
+    if (!isPlaying || !audioCtx || !notes.length) return;
 
-    previewStartPerf=performance.now();
+    const nowAudio = audioCtx.currentTime;
+    const nowSong = (nowAudio - t0) + pausedSongTime;
 
-    if (previewTimer) clearInterval(previewTimer);
-    previewTimer=setInterval(()=>{
-      const elapsed=(performance.now()-previewStartPerf)/1000;
-      const songTime=elapsed - previewCountInSec + (previewPausedSongTime||0);
-      visualTime=Math.max(0, songTime);
+    // during count-in, nowSong is negative; we still want to schedule notes after count-in
+    const songWindowStart = Math.max(0, nowSong);
+    const songWindowEnd = songWindowStart + SCHEDULE_AHEAD_SEC;
 
-      if (songTime < 0){ drawAll(false); return; }
+    const lt = loopTimes();
+    let loopStartT = 0;
+    let loopEndT = Infinity;
+    if (lt) { loopStartT = lt.tStart; loopEndT = lt.tEnd; }
 
-      while (currentIdx < notes.length-1 && notes[currentIdx+1].t <= visualTime) currentIdx++;
-      updateTargetReadout();
+    while (nextSchedIdx < notes.length) {
+      const n = notes[nextSchedIdx];
+      let nt = n.t;
 
-      const lt=loopTimes();
-      if (lt && visualTime >= lt.tEnd){
-        previewPausedSongTime=lt.tStart;
-        currentIdx=loop.start;
-        stopPreview(true);
-        startPreview();
-        return;
+      // loop handling: if looping, we only schedule within the loop window
+      if (lt) {
+        if (nt < loopStartT) { nextSchedIdx++; continue; }
+        if (nt >= loopEndT) break;
       }
 
-      drawAll(false);
+      if (nt > songWindowEnd) break;
+      if (nt >= songWindowStart - 0.002) {
+        const at = songTimeToAudioTime(nt) + countInSec; // count-in shifts audio forward
+        const dur = clamp(n.dur, 0.10, 1.2);
+        if (at >= nowAudio - 0.02) playSine(n.hz, at, dur);
+      }
+      nextSchedIdx++;
+    }
 
-      const endTime=(notes[notes.length-1]?.t??0)+1.5;
-      if (!lt && visualTime > endTime) stopPreview(false);
-    }, 30);
+    // if loop enabled and we've scheduled to the end of loop, wrap by resetting index
+    if (lt && nextSchedIdx < notes.length) {
+      const n = notes[nextSchedIdx];
+      if (n && n.t >= loopEndT - 0.001) {
+        // reset to loop start if we're close to reaching the end in real time
+        if (songWindowStart >= loopEndT - 0.02) {
+          pausedSongTime = loopStartT;
+          t0 = audioCtx.currentTime + 0.06; // reset master start to avoid drift
+          nextSchedIdx = findStartIndexForSongTime(loopStartT);
+        }
+      }
+    }
+  }
 
+  function startScheduler() {
+    stopScheduler();
+    schedTimer = setInterval(scheduleNotesWindow, LOOKAHEAD_MS);
+  }
+  function stopScheduler() {
+    if (schedTimer) clearInterval(schedTimer);
+    schedTimer = null;
+  }
+
+  function startPreview() {
+    if (!notes.length) return;
+    if (mode !== "preview") { setMode("preview"); }
+
+    stopMic();
+    ensureAudioCtx();
+
+    // soft warm-up (helps iOS)
+    const warmAt = audioCtx.currentTime + 0.03;
+    playSine(440, warmAt, 0.08);
+
+    const spb = 60 / bpm;
+    const countInBeats = clamp(parseInt(countInEl.value || "0", 10), 0, 8);
+    countInSec = countInBeats * spb;
+
+    // establish master time
+    t0 = audioCtx.currentTime + 0.10; // small lead for scheduler stability
+    isPlaying = true;
+    isPaused = false;
+
+    // schedule count-in clicks + optional metronome clicks
+    if (countInBeats > 0) {
+      for (let i = 0; i < countInBeats; i++) playClick(t0 + i * spb);
+    }
+    if (metroOnEl.checked) {
+      // schedule metronome only a little ahead in the scheduler tick to keep it light
+      // (we'll do a simple continuous click stream during playback loop below)
+    }
+
+    // scheduler prep
+    const songStart = pausedSongTime || 0;
+    nextSchedIdx = findStartIndexForSongTime(songStart);
+
+    updateTargetReadout();
     setStatus(countInBeats ? `Count-in: ${countInBeats}… then playing.` : "Preview playing…");
+
+    startScheduler();
+    startRAF();
   }
 
-  function pausePreview(){
-    if (!previewIsPlaying) return;
-    previewIsPlaying=false;
-    previewPlayBtn.disabled=false;
+  function pausePreview() {
+    if (!isPlaying || !audioCtx) return;
+    isPlaying = false;
+    isPaused = true;
 
-    if (previewTimer) clearInterval(previewTimer);
-    previewTimer=null;
+    // capture current song time (excluding count-in)
+    const nowAudio = audioCtx.currentTime;
+    const rawSong = (nowAudio - t0) + pausedSongTime;
+    pausedSongTime = Math.max(0, rawSong);
 
-    const elapsed=(performance.now()-previewStartPerf)/1000;
-    const songTime=elapsed - previewCountInSec + (previewPausedSongTime||0);
-    previewPausedSongTime=Math.max(0, songTime);
+    stopScheduler();
+    stopRAF();
 
-    if (previewCtx){
-      try{ previewCtx.close(); } catch{}
-      previewCtx=null;
-    }
-    setStatus("Preview paused.");
+    audioCtx.suspend?.();
+    setStatus("Paused.");
   }
 
-  function stopPreview(silent){
-    previewIsPlaying=false;
-    previewPlayBtn.disabled=false;
+  function stopPreview(silent) {
+    isPlaying = false;
+    isPaused = false;
 
-    if (previewTimer) clearInterval(previewTimer);
-    previewTimer=null;
+    stopScheduler();
+    stopRAF();
 
-    previewPausedSongTime=0;
-    if (previewCtx){
-      try{ previewCtx.close(); } catch{}
-      previewCtx=null;
+    if (audioCtx) {
+      audioCtx.suspend?.();
+      // keep context alive for iOS; don't close
     }
+
+    pausedSongTime = 0;
+    countInSec = 0;
 
     currentIdx = loop.enabled ? loop.start : 0;
-    visualTime = notes[currentIdx]?.t ?? 0;
     updateTargetReadout();
     drawAll(true);
 
-    if (!silent && notes.length) setStatus("Preview stopped.");
+    if (!silent && notes.length) setStatus("Stopped.");
   }
 
-  previewPlayBtn.addEventListener("click", startPreview);
-  previewPauseBtn.addEventListener("click", pausePreview);
-  previewStopBtn.addEventListener("click", ()=>stopPreview(false));
+  function stopRAF() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  function startRAF() {
+    stopRAF();
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+
+      // compute song time driven by audio clock
+      let songT = pausedSongTime;
+      if (audioCtx && isPlaying) {
+        const nowAudio = audioCtx.currentTime;
+        const raw = (nowAudio - t0) + pausedSongTime;
+        songT = raw;
+      }
+
+      // during count-in, raw can be negative. treat visuals as "about to start"
+      const visSong = Math.max(0, songT);
+      // update currentIdx based on visSong, respecting loop
+      if (notes.length) {
+        const lt = loopTimes();
+        let startI = 0;
+        let endI = notes.length - 1;
+        if (lt) { startI = loop.start; endI = loop.end; }
+
+        // advance index
+        while (currentIdx < endI && notes[currentIdx + 1].t <= visSong + 1e-4) currentIdx++;
+        if (lt && visSong >= (notes[endI].t + notes[endI].dur)) {
+          // visually wrap
+          currentIdx = startI;
+          pausedSongTime = lt.tStart;
+          if (audioCtx && isPlaying) {
+            t0 = audioCtx.currentTime + 0.06;
+            nextSchedIdx = findStartIndexForSongTime(lt.tStart);
+          }
+        }
+      }
+
+      updateTargetReadout();
+      drawAll(false, visSong);
+    };
+    tick();
+  }
+
+  playBtn.addEventListener("click", startPreview);
+  pauseBtn.addEventListener("click", pausePreview);
+  stopBtn.addEventListener("click", () => stopPreview(false));
+
+  testBtn.addEventListener("click", () => {
+    ensureAudioCtx();
+    const t = audioCtx.currentTime + 0.06;
+    playSine(440, t, 0.22);
+    playSine(659.25, t + 0.26, 0.22);
+    playSine(880, t + 0.52, 0.22);
+    setStatus("Test sound played.");
+  });
 
   // ---------------------------
-  // Learn (mic)
+  // Learn (mic): fixed pitchy import + better diagnostics
   // ---------------------------
-  let audioCtx=null, analyser=null, sourceNode=null, pitchDetector=null, floatBuf=null;
-  let micRunning=false;
-  let lastGoodMs=0;
-  const NEED_STABLE_MS=140;
+  let micCtx = null, analyser = null, sourceNode = null, pitchDetector = null, floatBuf = null;
+  let micRunning = false;
+  let lastGoodMs = 0;
+  const NEED_STABLE_MS = 180;
 
-  startMicBtn.addEventListener("click", async ()=>{
+  function rms(buf) {
+    let s = 0;
+    for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    return Math.sqrt(s / buf.length);
+  }
+
+  micBtn.addEventListener("click", async () => {
     if (!notes.length) return;
+    if (mode !== "learn") setMode("learn");
+
     stopPreview(true);
+    stopMic();
 
-    try{
-      audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-      const stream=await navigator.mediaDevices.getUserMedia({
-        audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
-      });
+    try {
+      micStatusTxt.textContent = "Requesting mic…";
+      micCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-      sourceNode=audioCtx.createMediaStreamSource(stream);
-      analyser=audioCtx.createAnalyser();
-      analyser.fftSize=2048;
+      // minimal constraints first (most compatible)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      sourceNode = micCtx.createMediaStreamSource(stream);
+      analyser = micCtx.createAnalyser();
+      analyser.fftSize = 2048;
       sourceNode.connect(analyser);
 
-      floatBuf=new Float32Array(analyser.fftSize);
-      pitchDetector=pitchy.PitchDetector.forFloat32Array(analyser.fftSize);
+      floatBuf = new Float32Array(analyser.fftSize);
+      pitchDetector = PitchDetector.forFloat32Array(analyser.fftSize);
 
-      micRunning=true;
-      lastGoodMs=0;
-      setStatus("Mic running. Play the target note to advance.");
+      micRunning = true;
+      lastGoodMs = 0;
+
+      micStatusTxt.textContent = "Mic running";
+      setStatus("Mic running. Play/whistle the target note to advance.");
+
       requestAnimationFrame(learnLoop);
-    } catch(err){
+    } catch (err) {
       console.error(err);
-      setStatus("Microphone permission denied or unavailable.");
+      micStatusTxt.textContent = `${err?.name || "Error"}: ${err?.message || err}`;
+      setStatus("Mic failed. Open Settings → Site permissions and allow microphone.");
+      stopMic();
     }
   });
 
-  function stopMic(){
-    micRunning=false;
-    if (audioCtx){
-      try{ audioCtx.close(); } catch{}
-    }
-    audioCtx=null; analyser=null; sourceNode=null; pitchDetector=null; floatBuf=null;
+  function stopMic() {
+    micRunning = false;
 
-    heardTxt.textContent="—";
-    clarityTxt.textContent="—";
-    deltaTxt.textContent="—";
-    lastGoodMs=0;
+    if (micCtx) {
+      try { micCtx.close(); } catch {}
+    }
+    micCtx = null; analyser = null; sourceNode = null; pitchDetector = null; floatBuf = null;
+
+    heardTxt.textContent = "—";
+    clarityTxt.textContent = "—";
+    deltaTxt.textContent = "—";
+    levelTxt.textContent = "—";
+    micStatusTxt.textContent = "—";
+    lastGoodMs = 0;
   }
 
-  function learnLoop(){
-    if (!micRunning || mode!=="learn") return;
+  function learnLoop() {
+    if (!micRunning || mode !== "learn" || !micCtx || !analyser || !pitchDetector) return;
 
-    const current=notes[currentIdx];
-    if (current) visualTime=current.t;
-
+    const current = notes[currentIdx];
     analyser.getFloatTimeDomainData(floatBuf);
-    const [pitchHz, clarity] = pitchDetector.findPitch(floatBuf, audioCtx.sampleRate);
 
-    clarityTxt.textContent = clarity ? clarity.toFixed(2) : "—";
-    heardTxt.textContent = pitchHz && isFiniteNumber(pitchHz) ? `${pitchHz.toFixed(1)} Hz` : "—";
+    const level = rms(floatBuf);
+    levelTxt.textContent = level.toFixed(4);
 
-    if (current && pitchHz && isFiniteNumber(pitchHz) && clarity > 0.86){
-      const delta=centsOff(pitchHz, current.hz);
-      deltaTxt.textContent=`${delta.toFixed(1)} cents`;
+    const [pitchHz, clarity] = pitchDetector.findPitch(floatBuf, micCtx.sampleRate);
 
-      const tol=clamp(parseFloat(tolCentsEl.value)||35,10,80);
-      const ok=Math.abs(delta)<=tol;
-      const waitMode=!!waitModeEl.checked;
+    // show zeros instead of "—" so we know it's updating
+    clarityTxt.textContent = isFiniteNumber(clarity) ? clarity.toFixed(2) : "0.00";
+    heardTxt.textContent = (pitchHz && isFiniteNumber(pitchHz)) ? `${pitchHz.toFixed(1)} Hz` : "—";
 
-      if (ok){
+    if (current && pitchHz && isFiniteNumber(pitchHz) && clarity >= 0.65 && level >= 0.004) {
+      const delta = centsOff(pitchHz, current.hz);
+      deltaTxt.textContent = `${delta.toFixed(1)} cents`;
+
+      const tol = clamp(parseFloat(tolCentsEl.value) || 45, 10, 120);
+      const ok = Math.abs(delta) <= tol;
+      const waitMode = !!waitModeEl.checked;
+
+      if (ok) {
         lastGoodMs += 16;
-        if (lastGoodMs >= NEED_STABLE_MS){
-          if (waitMode) currentIdx++;
-          else currentIdx = Math.min(currentIdx+1, notes.length-1);
-          lastGoodMs=0;
+        if (!waitMode || lastGoodMs >= NEED_STABLE_MS) {
+          currentIdx++;
+          lastGoodMs = 0;
         }
-      } else lastGoodMs=0;
+      } else {
+        lastGoodMs = 0;
+      }
 
       if (loop.enabled && currentIdx > loop.end) currentIdx = loop.start;
-      updateTargetReadout();
 
-      if (currentIdx >= notes.length){
+      if (currentIdx >= notes.length) {
         setStatus("Finished! 🎉");
         stopMic();
       }
+      updateTargetReadout();
+      drawAll(false, notes[Math.min(currentIdx, notes.length - 1)]?.t ?? 0);
     } else {
-      deltaTxt.textContent="—";
-      lastGoodMs=0;
+      deltaTxt.textContent = "—";
+      lastGoodMs = 0;
     }
 
-    drawAll(false);
     requestAnimationFrame(learnLoop);
   }
 
   // ---------------------------
-  // Drawing
+  // Drawing helpers
   // ---------------------------
   function roundRect(c,x,y,w,h,r){
     const rr=Math.min(r,w/2,h/2);
@@ -1075,7 +1188,7 @@
     return 5;
   }
 
-  function drawFalling(){
+  function drawFalling(songTimeSec){
     if (!showFallingEl.checked || fallingPanel.style.display==="none") return;
 
     const { bg, lane, stroke, text, muted, accent, accent4 } = cssVars();
@@ -1105,48 +1218,55 @@
       ctx.globalAlpha=1;
     }
 
-    // hit line a bit LOWER so we can use more vertical space above it
-    const hitY = lanesY1 - 96;
+    // hit line lower to use upper space
+    const hitY = lanesY1 - 104;
     ctx.strokeStyle=stroke; ctx.lineWidth=2;
     ctx.globalAlpha=0.9;
     ctx.beginPath(); ctx.moveTo(0, hitY); ctx.lineTo(cssW, hitY); ctx.stroke();
     ctx.globalAlpha=1;
 
     const ahead = fallingWindowCount();
-    const start = Math.max(0, currentIdx - 1);
-    const end = Math.min(notes.length - 1, currentIdx + ahead);
 
-    const minGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fallingMinGap")) || 64;
-
-    // IMPORTANT: stretch spacing to use the available area (fixes unused top)
-    const usableAbove = Math.max(120, hitY - (lanesY0 + 52));
+    // Smooth “guitar hero” style: position is based on time to each note
+    const minGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fallingMinGap")) || 74;
+    const usableAbove = Math.max(140, hitY - (lanesY0 + 56));
     const autoGap = usableAbove / (ahead + 0.6);
     const stepGap = Math.max(minGap, autoGap);
-
-    // bigger rectangles to prevent label overlap
-    const rectH = Math.max(58, stepGap * 0.78);
+    const rectH = Math.max(62, stepGap * 0.80);
 
     const noteFont = clamp(cssW * 0.045, 22, 36);
     const fingerFont = clamp(cssW * 0.034, 18, 26);
 
+    // convert time delta to pixels:
+    // Use average spacing based on local note spacing; keep simple and stable:
+    const baseSpeed = stepGap / 0.55; // px per second (tuned for readability)
+    const speed = baseSpeed * tempoMul;
+
+    // draw a small set around the currentIdx, but positioned by time (smooth)
+    const start = Math.max(0, currentIdx - 1);
+    const end = Math.min(notes.length - 1, currentIdx + ahead + 2);
+
     for (let i=start;i<=end;i++){
       const n=notes[i];
-      const step = i - currentIdx;
-      const y = hitY - step * stepGap;
+      const dt = n.t - songTimeSec; // seconds until note
+      const y = hitY - dt * speed;
+
+      // skip far offscreen
+      if (y < lanesY0 - 140 || y > lanesY1 + 120) continue;
 
       const laneIdx=n.stringIndex;
       const x = laneIdx==null ? laneX(0) : laneX(laneIdx);
       const laneWidth = laneIdx==null ? laneW*4 + laneGap*3 : laneW;
 
-      const isCurrent = i===currentIdx;
-      const isPast = i<currentIdx;
+      const isCurrent = i===currentIdx || (dt <= 0.02 && dt >= -0.18);
+      const isPast = dt < -0.20;
 
       const pad=10;
       const rectX = x + pad;
       const rectW = laneWidth - pad*2;
       const rectY = y - rectH;
 
-      ctx.globalAlpha = isPast ? 0.18 : isCurrent ? 1 : 0.88;
+      ctx.globalAlpha = isPast ? 0.16 : isCurrent ? 1 : 0.90;
       ctx.fillStyle = isCurrent ? accent : "#8a8a99";
       if (laneIdx==null) ctx.fillStyle = accent4;
 
@@ -1159,9 +1279,14 @@
       ctx.font = `900 ${noteFont}px system-ui`;
       ctx.fillText(n.label, rectX + 14, rectY + noteFont + 8);
 
-      // Finger badge: bottom-right (no longer overlaps note label)
+      // Finger badge: bottom-right auto-fit
       const badge = n.fingerText || "?";
-      const bw = 64, bh = 34;
+      ctx.font = `900 ${fingerFont}px system-ui`;
+      const textW = ctx.measureText(badge).width;
+      const bh = 34;
+      const maxBw = Math.max(40, rectW - 24);
+      const bw = clamp(textW + 26, 44, maxBw);
+
       const bx = rectX + rectW - (bw + 12);
       const by = rectY + rectH - (bh + 12);
 
@@ -1172,17 +1297,17 @@
 
       ctx.fillStyle = bg;
       ctx.font = `900 ${fingerFont}px system-ui`;
-      ctx.fillText(badge, bx + 18, by + 24);
+      ctx.fillText(badge, bx + 13, by + 24);
 
       ctx.globalAlpha = 1;
     }
 
     ctx.fillStyle=muted;
     ctx.font=`700 ${Math.max(12, cssW*0.016)}px system-ui`;
-    ctx.fillText("Bigger notes + stretched spacing for phone readability.", 14, cssH-10);
+    ctx.fillText("Smooth scrolling is driven by the audio clock (iOS-friendly).", 14, cssH-10);
   }
 
-  // Sheet: stable, page-like, NO dynamic canvas growth, NO “System 1” label
+  // Forward-looking sheet window (current + upcoming systems only)
   function drawSheet(){
     if (!showSheetEl.checked || sheetPanel.style.display==="none") return;
 
@@ -1201,14 +1326,9 @@
     const lineGap = clamp(cssH * 0.028, 10, 14);
     const staffGap = clamp(cssH * 0.14, 60, 96);
 
-    const trebleTop0 = pad + 26;
-    const bassTop0 = trebleTop0 + staffGap;
-
-    // compute how many systems fit vertically in the current canvas height
     const systemH = (staffGap + 10*lineGap);
     const systemsFit = Math.max(1, Math.floor((cssH - pad*2) / systemH));
 
-    // fixed, readable spacing per note
     const minSpacing = clamp(usableW * 0.08, 44, 72);
     const notesPerSystem = Math.max(4, Math.floor(usableW / minSpacing));
 
@@ -1240,10 +1360,10 @@
     }
     function staffFor(m){ return m>=60 ? "treble":"bass"; }
 
-    // Show systems around the current note (so you’re not always stuck on the beginning)
     const sysIndex = notes.length ? Math.floor(currentIdx / notesPerSystem) : 0;
-    const firstSys = clamp(sysIndex - Math.floor(systemsFit/2), 0, Math.max(0, Math.ceil(notes.length/notesPerSystem)-systemsFit));
-    const lastSys = firstSys + systemsFit - 1;
+    const totalSystems = Math.max(1, Math.ceil(notes.length / notesPerSystem));
+    const firstSys = clamp(sysIndex, 0, Math.max(0, totalSystems - systemsFit));
+    const lastSys  = clamp(firstSys + systemsFit - 1, 0, totalSystems - 1);
 
     for (let sys=firstSys; sys<=lastSys; sys++){
       const yBase = pad + (sys-firstSys)*systemH;
@@ -1254,7 +1374,6 @@
       staffLines(trebleTop);
       staffLines(bassTop);
 
-      // labels (treble/bass only, no “System 1”)
       sctx.fillStyle=muted;
       sctx.font=`800 ${Math.max(12, cssW*0.016)}px system-ui`;
       sctx.fillText("Treble", left, trebleTop - 10);
@@ -1275,7 +1394,10 @@
         const isCurrent = i===currentIdx;
         const isPast = i<currentIdx;
 
-        sctx.globalAlpha = isPast ? 0.20 : isCurrent ? 1 : 0.88;
+        // Keep only last 1 past note faint; skip older
+        if (isPast && i < currentIdx - 1) continue;
+
+        sctx.globalAlpha = isPast ? 0.10 : isCurrent ? 1 : 0.90;
         sctx.fillStyle = isCurrent ? accent : text;
 
         const r = clamp(cssW*0.010, 6, 9);
@@ -1295,8 +1417,7 @@
         }
         sctx.stroke();
 
-        // labels (smaller, stacked)
-        sctx.globalAlpha = isPast ? 0.18 : 0.78;
+        sctx.globalAlpha = isPast ? 0.14 : 0.78;
         sctx.fillStyle = muted;
         sctx.font = `900 ${clamp(cssW*0.015, 11, 13)}px system-ui`;
         sctx.fillText(n.label, x - 18, y + 26);
@@ -1308,12 +1429,12 @@
 
     sctx.fillStyle=muted;
     sctx.font=`700 ${Math.max(12, cssW*0.016)}px system-ui`;
-    sctx.fillText("Page view: fixed spacing per note (no horizontal scroll).", left, cssH-10);
+    sctx.fillText("Forward view: current + upcoming only.", left, cssH-10);
   }
 
-  function drawAll(forceLayout){
+  function drawAll(forceLayout, songTimeSec = 0){
     if (forceLayout) resizeCanvases();
-    drawFalling();
+    drawFalling(songTimeSec);
     drawSheet();
   }
 
