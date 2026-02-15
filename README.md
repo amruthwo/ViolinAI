@@ -9,3 +9,5 @@
 - Supports both Falling Note and Sheet Music views
 - (Beta) Uses device microphone to detect pitch and progress through the song at your pace
 - Modern UI at home on Android, iOS/iPadOS, and desktop operating system
+
+[Try it here!](https://amruthwo.github.io/ViolinAI/)
