@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
 
@@ -32,6 +32,9 @@
     </symbol>
     <symbol id="i-shuffle" viewBox="0 0 24 24">
       <path d="M16 3h5v5h-2V6.41l-3.29 3.3-1.42-1.42 3.3-3.29H16V3zM4 7h6v2H4V7zm0 8h6v2H4v-2zm16.59 2.59-3.3-3.3 1.42-1.42 3.29 3.29V15h2v5h-5v-2h1.59zM13.41 12.59 11 10.17V8.76l3.83 3.83-1.42 1.42z"></path>
+    </symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24">
+      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"></path>
     </symbol>
   </svg>
 
@@ -93,11 +96,14 @@
               </select>
             </label>
 
-            <!-- shows only when resolved design == material -->
-            <button id="m3ShuffleBtn" class="btn btn-tonal btn-pill ripple" type="button" hidden title="Shuffle Material seed color">
-              <svg class="ico"><use href="#i-shuffle"></use></svg>
-              <span>Shuffle</span>
-            </button>
+            <!-- Material-only: seed dots + shuffle -->
+            <div id="m3SeedControls" class="seedControls" hidden>
+              <div class="seedDots" id="m3SeedDots" aria-label="Material seed colors"></div>
+              <button id="m3ShuffleBtn" class="btn btn-tonal btn-pill ripple" type="button" title="Shuffle Material seed color">
+                <svg class="ico"><use href="#i-shuffle"></use></svg>
+                <span>Shuffle</span>
+              </button>
+            </div>
 
             <button id="themeBtn" class="btn btn-tonal ripple" title="Toggle light/dark">🌙 Dark</button>
           </div>
@@ -145,15 +151,22 @@
 
       <div class="status" id="status">Load a MIDI or MusicXML file to begin.</div>
 
-      <div class="readout">
-        <div><b>Target:</b> <span id="targetTxt">—</span></div>
-        <div><b>Heard:</b> <span id="heardTxt">—</span></div>
-        <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
-        <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
-        <div><b>Key:</b> <span id="keyTxt">—</span></div>
-        <div><b>Source:</b> <span id="srcTxt">—</span></div>
-        <div id="m3SeedLine" style="opacity:.85"><b>M3 seed:</b> <span id="m3SeedTxt">—</span></div>
-      </div>
+      <!-- Collapsible readout (critical for phone usability) -->
+      <details class="readoutDetails" id="readoutDetails" open>
+        <summary class="readoutSummary">
+          <span>Target / Mic / Key</span>
+          <svg class="chev"><use href="#i-chevron"></use></svg>
+        </summary>
+        <div class="readout" id="readout">
+          <div><b>Target:</b> <span id="targetTxt">—</span></div>
+          <div><b>Heard:</b> <span id="heardTxt">—</span></div>
+          <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
+          <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
+          <div><b>Key:</b> <span id="keyTxt">—</span></div>
+          <div><b>Source:</b> <span id="srcTxt">—</span></div>
+          <div id="m3SeedLine" style="opacity:.85"><b>M3 seed:</b> <span id="m3SeedTxt">—</span></div>
+        </div>
+      </details>
     </header>
 
     <main class="stageGrid" id="stageGrid">
@@ -161,10 +174,14 @@
         <div class="panelHdr">
           <div>
             <div class="panelTitle">Sheet</div>
-            <div class="panelHint">Simplified notation view</div>
+            <div class="panelHint">Simplified notation view (scrollable)</div>
           </div>
         </div>
-        <canvas id="sheetCanvas"></canvas>
+
+        <!-- Scroll container so we can make sheet "wider than screen" -->
+        <div class="canvasScroll" id="sheetScroll">
+          <canvas id="sheetCanvas"></canvas>
+        </div>
       </section>
 
       <section class="panel" id="fallingPanel">
@@ -182,7 +199,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
 
-  <!-- app.js is now a module so it can import Material Color Utilities -->
-  <script type="module" src="app.js?v=11"></script>
+  <script type="module" src="app.js?v=12"></script>
 </body>
 </html>
