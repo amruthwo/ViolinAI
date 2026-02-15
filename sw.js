@@ -1,8 +1,9 @@
-const CACHE = "violinai-v13.1";
+const CACHE = "violinai-v14";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=13.1",
+  "./app.js?v=14",
+  "./icon-192.png"
 ];
 
 self.addEventListener("install", (event) => {
