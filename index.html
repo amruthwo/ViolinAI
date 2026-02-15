@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-design="auto">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,104 +9,125 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
-  <header>
-    <h1>Violin Falling Notes</h1>
-    <p class="sub">Upload MIDI or MusicXML → Preview (listen) or Learn (play-to-advance).</p>
-  </header>
-
-  <section class="controls">
-    <div class="row row-tight">
-      <label class="file">
-        <span>Choose MIDI / MusicXML</span>
-        <input id="scoreFile" type="file" accept=".mid,.midi,.musicxml,.xml" />
-      </label>
-
-      <button id="themeBtn" title="Toggle light/dark">🌙 Dark</button>
-    </div>
-
-    <div class="row row-tight">
-      <div class="seg" role="tablist" aria-label="Mode">
-        <button id="modePreview" class="segbtn active" type="button">Preview</button>
-        <button id="modeLearn" class="segbtn" type="button">Learn</button>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="title">Violin Falling Notes</div>
+        <div class="subtitle">Upload MIDI or MusicXML → Preview (listen) or Learn (play-to-advance).</div>
       </div>
 
-      <div class="checks">
-        <label><input id="showFalling" type="checkbox" checked> Falling</label>
-        <label><input id="showSheet" type="checkbox" checked> Sheet</label>
-      </div>
-    </div>
+      <div class="top-controls">
+        <label class="file">
+          <span>Score</span>
+          <input id="scoreFile" type="file" accept=".mid,.midi,.musicxml,.xml" />
+        </label>
 
-    <div class="row row-tight">
-      <button id="previewPlayBtn" disabled>▶︎ Play</button>
-      <button id="previewPauseBtn" disabled>⏸ Pause</button>
-      <button id="previewStopBtn" disabled>⏹ Stop</button>
-      <button id="testSoundBtn" disabled>🔊 Test Sound</button>
-      <button id="startMicBtn" disabled>🎙 Start Mic</button>
-    </div>
-
-    <details class="advanced" open>
-      <summary>Practice & timing</summary>
-
-      <div class="row row-tight">
-        <div class="tempoBox">
-          <span class="label">Tempo</span>
-          <button id="tempoDownBtn" disabled>−</button>
-          <span id="tempoVal" class="tempoVal">1.00×</span>
-          <button id="tempoUpBtn" disabled>+</button>
+        <div class="seg" role="tablist" aria-label="Mode">
+          <button id="modePreview" class="segbtn active" type="button">Preview</button>
+          <button id="modeLearn" class="segbtn" type="button">Learn</button>
         </div>
 
-        <label class="inline">Count-in (beats):
-          <input id="countIn" type="number" min="0" max="8" step="1" value="4">
-        </label>
+        <div class="checks">
+          <label><input id="showSheet" type="checkbox" checked> Sheet</label>
+          <label><input id="showFalling" type="checkbox" checked> Falling</label>
+        </div>
 
-        <label class="inline">
-          <input id="metroOn" type="checkbox">
-          Metronome (preview)
-        </label>
+        <div class="designRow">
+          <label class="select">
+            <span>Design</span>
+            <select id="designSelect">
+              <option value="auto">Auto</option>
+              <option value="liquid">Liquid Glass</option>
+              <option value="material">Material 3</option>
+              <option value="classic">Classic</option>
+            </select>
+          </label>
+
+          <button id="themeBtn" title="Toggle light/dark">🌙 Dark</button>
+        </div>
       </div>
 
-      <div class="row row-tight">
-        <button id="loopStartBtn" disabled>⟲ Loop Start</button>
-        <button id="loopEndBtn" disabled>⟳ Loop End</button>
-        <button id="loopClearBtn" disabled>✕ Clear Loop</button>
-        <span class="pill" id="loopRead">Loop: off</span>
+      <div class="actionRow">
+        <button id="previewPlayBtn" disabled>▶︎ Play</button>
+        <button id="previewPauseBtn" disabled>⏸ Pause</button>
+        <button id="previewStopBtn" disabled>⏹ Stop</button>
+        <button id="testSoundBtn" disabled>🔊 Test Sound</button>
+        <button id="startMicBtn" disabled>🎙 Start Mic</button>
+
+        <details class="advanced" open>
+          <summary>Practice & timing</summary>
+
+          <div class="row row-tight">
+            <div class="tempoBox">
+              <span class="label">Tempo</span>
+              <button id="tempoDownBtn" disabled>−</button>
+              <span id="tempoVal" class="tempoVal">1.00×</span>
+              <button id="tempoUpBtn" disabled>+</button>
+            </div>
+
+            <label class="inline">Count-in (beats):
+              <input id="countIn" type="number" min="0" max="8" step="1" value="4">
+            </label>
+
+            <label class="inline">
+              <input id="metroOn" type="checkbox">
+              Metronome (preview)
+            </label>
+
+            <button id="loopStartBtn" disabled>⟲ Loop Start</button>
+            <button id="loopEndBtn" disabled>⟳ Loop End</button>
+            <button id="loopClearBtn" disabled>✕ Clear Loop</button>
+            <span class="pill" id="loopRead">Loop: off</span>
+          </div>
+
+          <div class="row row-tight learnOnly" id="learnOnlyRow">
+            <label class="inline">Tolerance (cents):
+              <input id="tolCents" type="number" min="10" max="80" step="1" value="35">
+            </label>
+            <label class="inline">
+              <input id="waitMode" type="checkbox" checked>
+              Wait mode (advance only when correct)
+            </label>
+          </div>
+        </details>
+
+        <div class="status" id="status">Load a MIDI or MusicXML file to begin.</div>
+
+        <div class="readout">
+          <div><b>Target:</b> <span id="targetTxt">—</span></div>
+          <div><b>Heard:</b> <span id="heardTxt">—</span></div>
+          <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
+          <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
+          <div><b>Key:</b> <span id="keyTxt">—</span></div>
+          <div><b>Source:</b> <span id="srcTxt">—</span></div>
+        </div>
       </div>
+    </header>
 
-      <div class="row row-tight learnOnly" id="learnOnlyRow">
-        <label class="inline">Tolerance (cents):
-          <input id="tolCents" type="number" min="10" max="80" step="1" value="35">
-        </label>
-        <label class="inline">
-          <input id="waitMode" type="checkbox" checked>
-          Wait mode (advance only when correct)
-        </label>
-      </div>
-    </details>
+    <main class="stageGrid" id="stageGrid">
+      <section class="panel" id="sheetPanel">
+        <div class="panelHdr">
+          <div class="panelTitle">Sheet</div>
+          <div class="panelHint">Simplified notation view</div>
+        </div>
+        <canvas id="sheetCanvas"></canvas>
+      </section>
 
-    <div class="status" id="status">Load a MIDI or MusicXML file to begin.</div>
-  </section>
-
-  <main class="stage">
-    <div class="canvasWrap">
-      <canvas id="canvas"></canvas>
-      <canvas id="sheetCanvas"></canvas>
-    </div>
-
-    <div class="readout">
-      <div><b>Target:</b> <span id="targetTxt">—</span></div>
-      <div><b>Heard:</b> <span id="heardTxt">—</span></div>
-      <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
-      <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
-      <div><b>Key:</b> <span id="keyTxt">—</span></div>
-      <div><b>Source:</b> <span id="srcTxt">—</span></div>
-    </div>
-  </main>
+      <section class="panel" id="fallingPanel">
+        <div class="panelHdr">
+          <div class="panelTitle">Falling Notes</div>
+          <div class="panelHint">String lanes + finger hints</div>
+        </div>
+        <canvas id="canvas"></canvas>
+      </section>
+    </main>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
