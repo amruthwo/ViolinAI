@@ -6,9 +6,13 @@
   <meta name="theme-color" content="#111111" />
   <title>ViolinAI — Falling Notes</title>
 
+  <!-- IMPORTANT:
+       If you have a <link rel="stylesheet" href="style.css"> in your repo,
+       either delete it or comment it out, OR make sure it doesn't override .btn / --accent.
+       v13.1 expects styling to come from this file. -->
+
   <style>
     :root{
-      /* Core tokens (overridden by Material seed + Liquid theme) */
       --bg:#0d1020;
       --bgFX:none;
       --surface:#141836;
@@ -19,14 +23,12 @@
       --text:#f2f4ff;
       --muted:rgba(242,244,255,.72);
 
-      --accent:#5b8cff;      /* changes with Material seed */
-      --accent2:#ff5bd6;     /* secondary/tertiary vibe */
+      --accent:#5b8cff;
+      --accent2:#ff5bd6;
       --accent3:#23d1b5;
       --accent4:#ffb020;
 
-      --shadow: 0 10px 28px rgba(0,0,0,.40);
       --shadow2: 0 6px 18px rgba(0,0,0,.32);
-
       --radius:18px;
       --radius2:14px;
 
@@ -39,16 +41,11 @@
       --btnBorder: color-mix(in srgb, var(--accent) 34%, var(--border));
 
       --danger:#ff4d6d;
-
       --gridGap:12px;
 
-      --sheetMinSpacing: 58px; /* increased spacing */
-      --sheetWrapPadding: 18px;
-
-      --fallingMinGap: 64px;   /* vertical padding between falling notes */
+      --fallingMinGap: 64px;
     }
 
-    /* Light mode baseline */
     html[data-theme="light"]{
       --bg:#f7f8ff;
       --surface:#ffffff;
@@ -58,7 +55,6 @@
       --border:rgba(0,0,0,.12);
       --text:#0b1026;
       --muted:rgba(11,16,38,.60);
-      --shadow: 0 10px 28px rgba(0,0,0,.10);
       --shadow2: 0 6px 18px rgba(0,0,0,.08);
 
       --btnText:#0b1026;
@@ -67,7 +63,6 @@
       --btnBorder: color-mix(in srgb, var(--accent) 30%, var(--border));
     }
 
-    /* Layout */
     body{
       margin:0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -75,6 +70,7 @@
       background: var(--bg);
       background-image: var(--bgFX);
     }
+
     .wrap{
       max-width: 1100px;
       margin: 0 auto;
@@ -84,13 +80,13 @@
       gap: var(--gridGap);
     }
 
-    /* Top bar */
     .topbar{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap: 10px;
     }
+
     .brand{
       display:flex;
       align-items:baseline;
@@ -98,6 +94,7 @@
       font-weight:900;
       letter-spacing:.2px;
     }
+
     .brand .tag{
       font-weight:800;
       font-size:12px;
@@ -108,7 +105,6 @@
       background: color-mix(in srgb, var(--surface) 72%, transparent);
     }
 
-    /* Cards / panels */
     .card{
       background: color-mix(in srgb, var(--surface) 86%, transparent);
       border:1px solid var(--border);
@@ -125,11 +121,8 @@
       border-bottom:1px solid color-mix(in srgb, var(--border) 76%, transparent);
       background: color-mix(in srgb, var(--surface) 92%, transparent);
     }
-    .card .bd{
-      padding: 12px 14px;
-    }
+    .card .bd{ padding: 12px 14px; }
 
-    /* Buttons */
     .pillRow{
       display:flex;
       flex-wrap:wrap;
@@ -157,11 +150,7 @@
       user-select:none;
       -webkit-tap-highlight-color: transparent;
     }
-    .btn:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-      box-shadow:none;
-    }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
     .btn.primary{
       background: var(--btnFill);
       color: var(--btnText);
@@ -172,16 +161,14 @@
       border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
       color: #fff;
     }
-    .btn .ico{
-      width:18px;height:18px;display:inline-block;flex:0 0 18px;
-    }
+    .btn .ico{ width:18px;height:18px;display:inline-block;flex:0 0 18px; }
+
     .btn.big{
       height: calc(var(--pillH) * 1.5);
       padding: 0 calc(var(--pillPadX) * 1.25);
       font-size: 16px;
     }
 
-    /* Segmented control (equal widths) */
     .seg{
       display:flex;
       border:1px solid var(--border);
@@ -190,6 +177,7 @@
       height: var(--pillH);
       background: color-mix(in srgb, var(--surface2) 70%, transparent);
       box-shadow: var(--shadow2);
+      min-width: 220px;
     }
     .seg button{
       flex:1 1 0;
@@ -197,7 +185,6 @@
       background: transparent;
       color: var(--text);
       font-weight: 900;
-      letter-spacing:.2px;
       cursor:pointer;
       padding:0 16px;
     }
@@ -206,7 +193,6 @@
       color: var(--btnText);
     }
 
-    /* Check toggles (pill) */
     .chkPill{
       display:inline-flex;
       align-items:center;
@@ -221,28 +207,17 @@
     }
     .chkPill input{ transform: scale(1.1); }
 
-    /* File input */
     .file{
       display:flex;
       gap:10px;
       align-items:center;
       flex-wrap:wrap;
     }
-    input[type="file"]{
-      max-width: 260px;
-    }
 
-    /* Settings drawer */
-    .settingsBtn{
-      width: var(--pillH);
-      padding:0;
-    }
+    .settingsBtn{ width: var(--pillH); padding:0; }
     #settingsPanel[hidden]{ display:none; }
 
-    /* Readout (collapsible) */
-    details{
-      border-radius: var(--radius);
-    }
+    details{ border-radius: var(--radius); }
     summary{
       cursor:pointer;
       list-style:none;
@@ -252,6 +227,7 @@
       background: color-mix(in srgb, var(--surface2) 66%, transparent);
     }
     summary::-webkit-details-marker{ display:none; }
+
     .readoutGrid{
       display:grid;
       grid-template-columns: 1fr 1fr;
@@ -267,21 +243,16 @@
     .kv .k{ font-size:12px; opacity:.75; font-weight:800; }
     .kv .v{ font-size:14px; font-weight:900; margin-top:6px; word-break:break-word; }
 
-    /* Two-panel responsive layout */
     .mainGrid{
       display:grid;
       grid-template-columns: 1fr;
       gap: var(--gridGap);
     }
     @media (min-width: 900px){
-      .mainGrid{
-        grid-template-columns: 1.05fr 0.95fr;
-        align-items:start;
-      }
+      .mainGrid{ grid-template-columns: 1.05fr 0.95fr; align-items:start; }
       .wrap{ padding: 18px; }
     }
 
-    /* Canvases */
     canvas{
       display:block;
       width:100%;
@@ -291,7 +262,6 @@
       background: var(--canvas);
     }
 
-    /* Sheet: vertical scroll allowed, no horizontal scroll */
     #sheetScroll{
       overflow-x:hidden;
       overflow-y:auto;
@@ -301,7 +271,6 @@
       #sheetScroll{ max-height: 44vh; }
     }
 
-    /* Status row */
     .statusRow{
       display:flex;
       justify-content:space-between;
@@ -315,7 +284,6 @@
     }
     .statusRow code{ font-weight:900; }
 
-    /* Seed dots */
     .seedDots{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .seedDot{
       width: 18px; height: 18px;
@@ -329,7 +297,6 @@
       outline-offset: 2px;
     }
 
-    /* Ripple ink */
     .ripple-ink{
       position:absolute;
       border-radius: 999px;
@@ -340,18 +307,16 @@
       animation: ripple .52s ease-out forwards;
       mix-blend-mode: overlay;
     }
-    @keyframes ripple{
-      to{ transform: scale(1); opacity:0; }
-    }
+    @keyframes ripple{ to{ transform: scale(1); opacity:0; } }
 
-    /* Design: Classic */
+    /* Classic */
     html[data-design="classic"]{
       --bgFX:none;
       --btnFill2: color-mix(in srgb, var(--surface2) 70%, transparent);
       --btnBorder: var(--border);
     }
 
-    /* Design: Liquid Glass (more vivid, shimmer sweep uses CSS only) */
+    /* Liquid */
     html[data-design="liquid"]{
       --accent: #ff4fd8;
       --accent2:#7a5cff;
@@ -374,10 +339,7 @@
       content:"";
       position:absolute;
       inset:-40%;
-      background: linear-gradient(120deg,
-        transparent 10%,
-        rgba(255,255,255,.35) 30%,
-        transparent 55%);
+      background: linear-gradient(120deg, transparent 10%, rgba(255,255,255,.35) 30%, transparent 55%);
       transform: translateX(-65%) rotate(8deg);
       animation: shimmer 2.3s ease-in-out infinite;
       pointer-events:none;
@@ -390,7 +352,7 @@
       100%{ transform: translateX(80%) rotate(8deg); opacity:0; }
     }
 
-    /* Design: Material 3 (seed colors injected into --accent/2/3/4 and surfaces) */
+    /* Material 3 */
     html[data-design="material"]{
       --btnFill: var(--accent);
       --btnText: color-mix(in srgb, #000 84%, transparent);
@@ -398,7 +360,6 @@
       --btnBorder: color-mix(in srgb, var(--accent) 26%, var(--border));
     }
 
-    /* Responsive: hide settings panel by default on phones (JS will also handle) */
     @media (max-width: 640px){
       .readoutGrid{ grid-template-columns: 1fr; }
     }
@@ -410,10 +371,9 @@
     <div class="topbar">
       <div class="brand">
         <div>ViolinAI</div>
-        <div class="tag">v13</div>
+        <div class="tag">v13.1</div>
       </div>
       <button id="settingsBtn" class="btn settingsBtn ripple" title="Settings" aria-expanded="false">
-        <!-- gear icon -->
         <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="2"/>
           <path d="M19.4 15a8.6 8.6 0 0 0 .1-6l-2 0-.6-1.5 1.4-1.4a10 10 0 0 0-4.2-2.4L13 5l-2 0-.9-1.8A10 10 0 0 0 5.9 5.6L7.3 7 6.7 8.5l-2 0a8.6 8.6 0 0 0 0 6l2 0 .6 1.5-1.4 1.4a10 10 0 0 0 4.2 2.4L11 19l2 0 .9 1.8a10 10 0 0 0 4.2-2.4L16.7 17l.6-1.5 2 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -421,9 +381,41 @@
       </button>
     </div>
 
+    <!-- Transport row: back OUTSIDE settings -->
+    <div class="card">
+      <div class="bd">
+        <div class="pillRow">
+          <button id="previewPlayBtn" class="btn big primary ripple">
+            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Play
+          </button>
+          <button id="previewPauseBtn" class="btn big ripple">
+            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+            Pause
+          </button>
+          <button id="previewStopBtn" class="btn big ripple">
+            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+            Stop
+          </button>
+          <button id="testSoundBtn" class="btn big ripple">
+            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10zm13.5 2a3.5 3.5 0 0 0-2.5-3.35v6.7A3.5 3.5 0 0 0 16.5 12zm0-7a8.5 8.5 0 0 1 0 14v-2a6.5 6.5 0 0 0 0-10z"/></svg>
+            Test
+          </button>
+          <button id="startMicBtn" class="btn big primary ripple" style="display:none;">
+            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
+            Start Mic
+          </button>
+        </div>
+      </div>
+      <div class="statusRow">
+        <div id="status">Loading…</div>
+        <div style="opacity:.8;">Tip: iPhone silent switch can mute preview audio.</div>
+      </div>
+    </div>
+
     <div id="settingsPanel" class="card" hidden>
       <div class="hd">
-        <div style="font-weight:900;">Controls</div>
+        <div style="font-weight:900;">Settings</div>
         <div class="pillRow">
           <button id="themeBtn" class="btn ripple">🌙 Dark</button>
           <select id="designSelect" class="btn ripple" style="height:var(--pillH);">
@@ -446,7 +438,7 @@
         <div style="height:12px;"></div>
 
         <div class="pillRow">
-          <div class="seg" style="min-width: 220px;">
+          <div class="seg">
             <button id="modePreview" class="active">Preview</button>
             <button id="modeLearn">Learn</button>
           </div>
@@ -467,31 +459,6 @@
             <button id="m3ShuffleBtn" class="btn ripple">Shuffle</button>
             <span style="opacity:.85;">Seed: <code id="m3SeedTxt">—</code></span>
           </div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <div class="pillRow">
-          <button id="previewPlayBtn" class="btn big primary ripple">
-            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            Play
-          </button>
-          <button id="previewPauseBtn" class="btn big ripple">
-            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
-            Pause
-          </button>
-          <button id="previewStopBtn" class="btn big ripple">
-            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-            Stop
-          </button>
-          <button id="testSoundBtn" class="btn big ripple">
-            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 4V6L7 10zm13.5 2a3.5 3.5 0 0 0-2.5-3.35v6.7A3.5 3.5 0 0 0 16.5 12zm0-7a8.5 8.5 0 0 1 0 14v-2a6.5 6.5 0 0 0 0-10z"/></svg>
-            Test
-          </button>
-          <button id="startMicBtn" class="btn big primary ripple" style="display:none;">
-            <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
-            Start Mic
-          </button>
         </div>
 
         <div style="height:12px;"></div>
@@ -541,29 +508,12 @@
         <details id="readoutDetails" class="card">
           <summary>Target / heard</summary>
           <div class="readoutGrid">
-            <div class="kv">
-              <div class="k">Target</div>
-              <div class="v" id="targetTxt">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">Heard</div>
-              <div class="v" id="heardTxt">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">Clarity</div>
-              <div class="v" id="clarityTxt">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">Delta</div>
-              <div class="v" id="deltaTxt">—</div>
-            </div>
+            <div class="kv"><div class="k">Target</div><div class="v" id="targetTxt">—</div></div>
+            <div class="kv"><div class="k">Heard</div><div class="v" id="heardTxt">—</div></div>
+            <div class="kv"><div class="k">Clarity</div><div class="v" id="clarityTxt">—</div></div>
+            <div class="kv"><div class="k">Delta</div><div class="v" id="deltaTxt">—</div></div>
           </div>
         </details>
-      </div>
-
-      <div class="statusRow">
-        <div id="status">Loading…</div>
-        <div style="opacity:.8;">Tip: iPhone silent switch can mute preview audio.</div>
       </div>
     </div>
 
@@ -584,11 +534,8 @@
     </div>
   </div>
 
-  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-
-  <!-- App -->
-  <script type="module" src="app.js?v=13"></script>
+  <script type="module" src="app.js?v=13.1"></script>
 </body>
 </html>
