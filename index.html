@@ -9,19 +9,19 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
   <header>
     <h1>Violin Falling Notes</h1>
-    <p class="sub">Preview (listen) or Learn (play-to-advance). Toggle Falling + Sheet independently.</p>
+    <p class="sub">Upload MIDI or MusicXML → Preview (listen) or Learn (play-to-advance).</p>
   </header>
 
   <section class="controls">
     <div class="row row-tight">
       <label class="file">
-        <span>Choose MIDI</span>
-        <input id="midiFile" type="file" accept=".mid,.midi" />
+        <span>Choose MIDI / MusicXML</span>
+        <input id="scoreFile" type="file" accept=".mid,.midi,.musicxml,.xml" />
       </label>
 
       <button id="themeBtn" title="Toggle light/dark">🌙 Dark</button>
@@ -86,7 +86,7 @@
       </div>
     </details>
 
-    <div class="status" id="status">Load a MIDI file to begin.</div>
+    <div class="status" id="status">Load a MIDI or MusicXML file to begin.</div>
   </section>
 
   <main class="stage">
@@ -101,11 +101,12 @@
       <div><b>Clarity:</b> <span id="clarityTxt">—</span></div>
       <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
       <div><b>Key:</b> <span id="keyTxt">—</span></div>
+      <div><b>Source:</b> <span id="srcTxt">—</span></div>
     </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
