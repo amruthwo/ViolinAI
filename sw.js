@@ -1,4 +1,4 @@
-const CACHE = "violin-falling-notes-v12";
+const CACHE = "violin-falling-notes-v12.1";
 const ASSETS = [
   "./",
   "./index.html",
