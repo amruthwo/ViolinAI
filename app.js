@@ -40,6 +40,9 @@
   const themeBtn = $("themeBtn");
   const designSelect = $("designSelect");
 
+  const settingsBtn = $("settingsBtn");
+  const settingsPanel = $("settingsPanel");
+
   const targetTxt = $("targetTxt");
   const heardTxt = $("heardTxt");
   const clarityTxt = $("clarityTxt");
@@ -53,7 +56,6 @@
 
   const sheetPanel = $("sheetPanel");
   const fallingPanel = $("fallingPanel");
-  const topbar = document.querySelector(".topbar");
 
   // Violin strings (open MIDI)
   const STRINGS = [
@@ -72,8 +74,8 @@
   let bpm = 120;
   let keySig = null;
 
-  let baseNotes = []; // [{t, dur, midi}] in seconds @tempoMul=1
-  let notes = [];     // scaled by tempoMul
+  let baseNotes = []; // [{t, dur, midi}]
+  let notes = [];
   let currentIdx = 0;
 
   let loop = { enabled: false, start: 0, end: 0 };
@@ -137,28 +139,28 @@
     targetTxt.textContent = n ? laneLabel(n) : "Done!";
   }
 
+  // ---- Settings drawer toggle ----
+  function setSettingsOpen(open){
+    settingsPanel.hidden = !open;
+    settingsBtn.setAttribute("aria-expanded", open ? "true":"false");
+  }
+  settingsBtn.addEventListener("click", ()=>{
+    setSettingsOpen(settingsPanel.hidden);
+  });
+
   // ---- Platform + theming ----
   function detectPlatform() {
-    // userAgentData where available
     const ua = navigator.userAgent || "";
     const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const isAndroid = /Android/.test(ua);
-    const isApple = isIOS || /Mac OS X/.test(ua);
-    const isChromeFamily = /Chrome|CriOS|Edg\//.test(ua);
-    return { isIOS, isAndroid, isApple, isChromeFamily };
+    return { isIOS, isAndroid };
   }
 
   function applyDesign(design) {
-    // Resolve auto
     const plat = detectPlatform();
     let resolved = design;
-    if (design === "auto") {
-      resolved = plat.isIOS ? "liquid" : "material";
-    }
+    if (design === "auto") resolved = plat.isIOS ? "liquid" : "material";
     document.documentElement.setAttribute("data-design", resolved);
-    // For liquid, make topbar glassy
-    if (resolved === "liquid") topbar.classList.add("glass");
-    else topbar.classList.remove("glass");
   }
 
   function loadDesignPref() {
@@ -176,9 +178,8 @@
   function setTheme(theme){
     document.documentElement.setAttribute("data-theme", theme);
     themeBtn.textContent = theme==="dark" ? "🌙 Dark" : "☀️ Light";
-    // theme-color for PWA address bar
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f7f7fb");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#111111" : "#f6f7ff");
     drawFalling(); drawSheet();
   }
 
@@ -191,22 +192,18 @@
   function loadThemePref() {
     const saved = localStorage.getItem("vfn_theme");
     if (saved === "light" || saved === "dark") return setTheme(saved);
-    // default to system
     try { setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark":"light"); }
     catch { setTheme("dark"); }
   }
 
-  // ---- Responsive behavior: if one view hidden, span the other ----
+  // ---- View visibility ----
   function applyViewVisibility(){
     const showSheet = showSheetEl.checked;
     const showFall = showFallingEl.checked;
-
     sheetPanel.style.display = showSheet ? "block" : "none";
     fallingPanel.style.display = showFall ? "block" : "none";
-
-    // If only one is shown, it spans full width (grid auto handles, but keep clean)
-    drawFalling(); drawSheet();
     resizeCanvases();
+    drawFalling(); drawSheet();
   }
   showFallingEl.addEventListener("change", applyViewVisibility);
   showSheetEl.addEventListener("change", applyViewVisibility);
@@ -236,14 +233,13 @@
   modePreviewBtn.addEventListener("click", ()=>setMode("preview"));
   modeLearnBtn.addEventListener("click", ()=>setMode("learn"));
 
-  // Canvas sizing (each panel independently)
+  // Canvas sizing
   function resizeCanvases(){
     dpr = window.devicePixelRatio || 1;
 
     function sizeCanvasToPanel(c, panel, aspect){
       if (!panel || panel.style.display === "none") return;
       const rect = panel.getBoundingClientRect();
-      // subtract header height (panelHdr) ~ 48px; keep safe
       const cssW = Math.max(260, Math.floor(rect.width));
       const cssH = Math.max(220, Math.floor(cssW * aspect));
       c.style.width = cssW + "px";
@@ -252,7 +248,6 @@
       c.height = Math.floor(cssH * dpr);
     }
 
-    // Make falling slightly shorter than sheet on big screens; both roomy on phones
     sizeCanvasToPanel(sheetCanvas, sheetPanel, 0.58);
     sizeCanvasToPanel(canvas, fallingPanel, 0.56);
   }
@@ -263,7 +258,7 @@
     return {
       bg:s.getPropertyValue("--canvas").trim(),
       lane:s.getPropertyValue("--lane").trim(),
-      stroke:s.getPropertyValue("--stroke").trim(),
+      stroke:s.getPropertyValue("--border").trim() || s.getPropertyValue("--stroke")?.trim() || "rgba(255,255,255,0.2)",
       text:s.getPropertyValue("--text").trim(),
       muted:s.getPropertyValue("--muted").trim(),
       accent:s.getPropertyValue("--accent").trim()
@@ -362,7 +357,6 @@
   // ---- Loaders ----
   async function loadMidi(arrayBuffer){
     const midi = new Midi(arrayBuffer);
-
     const tempos = midi.header.tempos || [];
     bpm = tempos.length ? tempos[0].bpm : 120;
 
@@ -542,6 +536,11 @@
 
       setStatus(`Loaded ${notes.length} notes from ${srcTxt.textContent}. BPM≈${Math.round(bpm)}.`);
 
+      // Nice mobile behavior: auto-collapse settings after load
+      if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
+        setSettingsOpen(false);
+      }
+
     } catch (err) {
       console.error(err);
       setStatus(`Could not load file: ${err.message || err}`);
@@ -669,12 +668,11 @@
     requestAnimationFrame(learnLoop);
   }
 
-  // ---- Preview audio ----
+  // ---- Preview audio (unchanged) ----
   function ensurePreviewCtx(){
     if(!previewCtx) previewCtx = new (window.AudioContext || window.webkitAudioContext)();
     previewCtx.resume?.();
   }
-
   function playClick(atTime){
     const o=previewCtx.createOscillator();
     const g=previewCtx.createGain();
@@ -685,7 +683,6 @@
     o.connect(g); g.connect(previewCtx.destination);
     o.start(atTime); o.stop(atTime+0.05);
   }
-
   function playBeep(freq, atTime, dur){
     const o=previewCtx.createOscillator();
     const g=previewCtx.createGain();
@@ -697,7 +694,6 @@
     o.connect(g); g.connect(previewCtx.destination);
     o.start(atTime); o.stop(atTime+Math.max(0.08, dur)+0.05);
   }
-
   testSoundBtn.addEventListener("click", ()=>{
     ensurePreviewCtx();
     const t=previewCtx.currentTime+0.05;
@@ -805,7 +801,7 @@
   previewPauseBtn.addEventListener("click", pausePreview);
   previewStopBtn.addEventListener("click", ()=>stopPreview(false));
 
-  // ---- Drawing helpers ----
+  // ---- Drawing (same as before) ----
   function roundRect(c,x,y,w,h,r){
     const rr=Math.min(r,w/2,h/2);
     c.beginPath();
@@ -817,7 +813,6 @@
     c.closePath();
   }
 
-  // ---- Drawing: Falling ----
   function drawFalling(){
     if(!showFallingEl.checked || fallingPanel.style.display==="none") return;
 
@@ -910,7 +905,6 @@
     ctx.fillText("Finger labels are first-position heuristics (L=low).", 14, cssH-10);
   }
 
-  // ---- Drawing: Sheet ----
   function drawSheet(){
     if(!showSheetEl.checked || sheetPanel.style.display==="none") return;
 
@@ -966,8 +960,8 @@
       const oct=Math.floor(m/12)-1;
       return oct*7+di;
     }
-    const trebleRefMidi=64; // E4
-    const bassRefMidi=43;   // G2-ish
+    const trebleRefMidi=64;
+    const bassRefMidi=43;
     const trebleRefStep=midiToDiatonicStep(trebleRefMidi);
     const bassRefStep=midiToDiatonicStep(bassRefMidi);
 
@@ -1034,15 +1028,16 @@
   }
 
   function init(){
-    // prefs
     loadThemePref();
     loadDesignPref();
 
-    // default canvas sizes
+    // settings default: open on desktop, closed on phone
+    const isPhone = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    setSettingsOpen(!isPhone);
+
     applyViewVisibility();
     resizeCanvases();
 
-    // mode
     setMode("preview");
     setTempoMul(1.0);
     disableAll();
