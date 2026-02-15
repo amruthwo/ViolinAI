@@ -2,50 +2,60 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
+.svg-sprite{
+  position:absolute;
+  width:0; height:0;
+  overflow:hidden;
+}
+
+/* ---- Base palette ---- */
 html[data-theme="dark"]{
-  --bg:#090a0f;
-  --text:#eef0ff;
-  --muted:rgba(238,240,255,0.72);
+  --bg:#060611;
+  --text:#f2f4ff;
+  --muted:rgba(242,244,255,0.72);
 
+  /* Loud accents */
   --accent:#5b8cff;
-  --accent2:#ff4fd8;
-  --accent3:#35f3c6;
+  --accent2:#ff39c8;
+  --accent3:#2dffb5;
+  --accent4:#ffb000;
 
-  --canvas:#0c0d14;
-  --lane:#111325;
+  --canvas:#0b0c18;
+  --lane:#101331;
 
   --radius: 16px;
   --radius2: 26px;
 
-  --shadow1: 0 10px 22px rgba(0,0,0,0.38);
-  --shadow2: 0 20px 50px rgba(0,0,0,0.48);
+  --shadow1: 0 10px 22px rgba(0,0,0,0.40);
+  --shadow2: 0 24px 66px rgba(0,0,0,0.55);
   --blur: 18px;
 }
 
 html[data-theme="light"]{
-  --bg:#f6f7ff;
-  --text:#101125;
-  --muted:rgba(16,17,37,0.70);
+  --bg:#f4f6ff;
+  --text:#0c0d22;
+  --muted:rgba(12,13,34,0.70);
 
-  --accent:#2a63ff;
-  --accent2:#d23cff;
-  --accent3:#00b894;
+  --accent:#1f5bff;
+  --accent2:#cc2cff;
+  --accent3:#00c39a;
+  --accent4:#ff8a00;
 
   --canvas:#ffffff;
-  --lane:#f0f2ff;
+  --lane:#eef1ff;
 
   --radius: 16px;
   --radius2: 26px;
 
   --shadow1: 0 10px 20px rgba(0,0,0,0.10);
-  --shadow2: 0 18px 44px rgba(0,0,0,0.16);
+  --shadow2: 0 20px 52px rgba(0,0,0,0.16);
   --blur: 14px;
 }
 
-/* -------- Design: Classic -------- */
+/* ---- Design: Classic (simple) ---- */
 html[data-design="classic"]{
-  --surface: color-mix(in srgb, var(--bg) 88%, #ffffff10);
-  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff12);
+  --surface: color-mix(in srgb, var(--bg) 92%, #ffffff10);
+  --surface2: color-mix(in srgb, var(--bg) 88%, #ffffff12);
   --border: color-mix(in srgb, var(--text) 14%, transparent);
 
   --btnFill: var(--accent);
@@ -58,52 +68,76 @@ html[data-design="classic"]{
   --chipBorder: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
-/* -------- Design: Material 3-ish -------- */
+/* ---- Design: Material 3-ish (LOUD) ---- */
 html[data-design="material"]{
-  --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
-  --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
+  --surface: color-mix(in srgb, var(--bg) 88%, #ffffff16);
+  --surface2: color-mix(in srgb, var(--bg) 82%, #ffffff22);
   --border: color-mix(in srgb, var(--text) 12%, transparent);
 
-  /* M3 vibe: clear filled + tonal + outlined/ghost */
-  --btnFill: color-mix(in srgb, var(--accent) 92%, #0000);
-  --btnFillText: #fff;
-  --btnTonal: color-mix(in srgb, var(--accent) 20%, var(--surface2));
+  --btnFill: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent2) 65%, var(--accent)));
+  --btnFillText:#fff;
+
+  --btnTonal: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 24%, var(--surface2)),
+    color-mix(in srgb, var(--accent3) 18%, var(--surface2))
+  );
   --btnTonalText: var(--text);
+
   --btnGhost: transparent;
 
-  --chipBg: color-mix(in srgb, var(--accent) 10%, var(--surface2));
-  --chipBorder: color-mix(in srgb, var(--accent) 22%, transparent);
+  --chipBg: color-mix(in srgb, var(--accent) 14%, var(--surface2));
+  --chipBorder: color-mix(in srgb, var(--accent) 30%, transparent);
 
-  --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  --m3Ring: 0 0 0 4px color-mix(in srgb, var(--accent2) 28%, transparent);
+
+  --bgFX:
+    radial-gradient(900px 650px at 10% -10%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent3) 26%, transparent), transparent 70%),
+    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent2) 22%, transparent), transparent 70%);
 }
 
-/* -------- Design: Liquid Glass -------- */
+/* ---- Design: Liquid Glass (LOUD + iridescent) ---- */
 html[data-design="liquid"]{
-  /* Frosted surfaces + spectral sheen */
-  --surface: color-mix(in srgb, #ffffff18 30%, var(--bg));
-  --surface2: color-mix(in srgb, #ffffff22 34%, var(--bg));
-  --border: color-mix(in srgb, #ffffff22 55%, transparent);
+  --surface: color-mix(in srgb, #ffffff22 36%, var(--bg));
+  --surface2: color-mix(in srgb, #ffffff28 40%, var(--bg));
+  --border: color-mix(in srgb, #ffffff30 55%, transparent);
 
   --btnFill: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 86%, #ffffff20),
-    color-mix(in srgb, var(--accent2) 60%, #ffffff10)
+    color-mix(in srgb, var(--accent) 90%, #ffffff30),
+    color-mix(in srgb, var(--accent2) 75%, #ffffff20),
+    color-mix(in srgb, var(--accent3) 55%, #ffffff10)
   );
   --btnFillText:#fff;
 
-  --btnTonal: color-mix(in srgb, #ffffff18 60%, transparent);
+  --btnTonal: linear-gradient(135deg,
+    color-mix(in srgb, #ffffff20 70%, transparent),
+    color-mix(in srgb, var(--accent2) 18%, transparent)
+  );
   --btnTonalText: var(--text);
 
-  --btnGhost: color-mix(in srgb, #ffffff14 55%, transparent);
+  --btnGhost: color-mix(in srgb, #ffffff16 55%, transparent);
 
-  --chipBg: color-mix(in srgb, #ffffff16 55%, transparent);
-  --chipBorder: color-mix(in srgb, #ffffff22 60%, transparent);
+  --chipBg: color-mix(in srgb, #ffffff18 60%, transparent);
+  --chipBorder: color-mix(in srgb, #ffffff28 60%, transparent);
 
-  --glassEdge: 0 0 0 1px color-mix(in srgb, #ffffff35 30%, transparent) inset;
-  --glow: 0 0 22px color-mix(in srgb, var(--accent2) 20%, transparent);
+  --glassEdge: 0 0 0 1px color-mix(in srgb, #ffffff55 26%, transparent) inset;
+  --glow: 0 0 28px color-mix(in srgb, var(--accent2) 24%, transparent);
+
+  --bgFX:
+    radial-gradient(900px 650px at 8% -10%, color-mix(in srgb, var(--accent2) 28%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 98% 10%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 45% 120%, color-mix(in srgb, var(--accent3) 18%, transparent), transparent 70%),
+    conic-gradient(from 210deg at 50% 0%,
+      color-mix(in srgb, var(--accent) 18%, transparent),
+      color-mix(in srgb, var(--accent2) 18%, transparent),
+      color-mix(in srgb, var(--accent3) 16%, transparent),
+      color-mix(in srgb, var(--accent4) 16%, transparent),
+      color-mix(in srgb, var(--accent) 18%, transparent)
+    );
 }
 
+/* Auto gets resolved by JS, but safe defaults */
 html[data-design="auto"]{
-  /* resolved in JS, but safe defaults */
   --surface: color-mix(in srgb, var(--bg) 90%, #ffffff12);
   --surface2: color-mix(in srgb, var(--bg) 84%, #ffffff1a);
   --border: color-mix(in srgb, var(--text) 12%, transparent);
@@ -116,6 +150,11 @@ html[data-design="auto"]{
 
   --chipBg: color-mix(in srgb, var(--accent) 10%, var(--surface2));
   --chipBorder: color-mix(in srgb, var(--accent) 22%, transparent);
+
+  --bgFX:
+    radial-gradient(900px 650px at 12% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+    radial-gradient(900px 650px at 96% 10%, color-mix(in srgb, var(--accent2) 18%, transparent), transparent 70%),
+    radial-gradient(800px 580px at 55% 120%, color-mix(in srgb, var(--accent3) 12%, transparent), transparent 70%);
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
@@ -129,15 +168,12 @@ html[data-design="auto"]{
   }
 }
 
+/* ---- Page ---- */
 body{
   margin:0;
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
   color: var(--text);
-  background:
-    radial-gradient(900px 600px at 12% -10%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%),
-    radial-gradient(900px 600px at 95% 10%, color-mix(in srgb, var(--accent2) 18%, transparent), transparent 70%),
-    radial-gradient(700px 500px at 40% 120%, color-mix(in srgb, var(--accent3) 10%, transparent), transparent 70%),
-    var(--bg);
+  background: var(--bgFX), var(--bg);
 }
 
 .app{
@@ -146,7 +182,7 @@ body{
   grid-template-rows: auto 1fr;
 }
 
-/* -------- Topbar -------- */
+/* ---- Topbar ---- */
 .topbar{
   position: sticky;
   top:0;
@@ -167,15 +203,38 @@ html[data-design="liquid"] .topbar{ box-shadow: var(--shadow2), var(--glow); }
 .title{ font-weight: 1000; letter-spacing: 0.2px; }
 .subtitle{ font-size: 12.5px; color: var(--muted); }
 
-/* Transport row is always compact */
+/* ---- Transport: bigger, flex-fill ---- */
 .transport{
   margin-top: 10px;
   display:flex;
   align-items:center;
-  gap: 8px;
+  gap: 10px;
 }
-.spacer{ flex:1; }
 
+/* buttons become equal-width pill tiles */
+.btn-icon{
+  flex: 1 1 0;
+  min-width: 56px;
+  height: 66px;              /* ~50% larger than earlier */
+  padding: 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.btn-icon svg{
+  width: 34px;
+  height: 34px;
+  fill: currentColor;
+}
+
+/* gear stays compact but still large enough */
+.btn-gear{
+  flex: 0 0 auto;
+  width: 66px;
+}
+
+/* ---- Surfaces ---- */
 .status, .readout, .settings, .panel{
   border: 1px solid var(--border);
   border-radius: var(--radius2);
@@ -195,11 +254,11 @@ html[data-design="material"] .panel{
   box-shadow: var(--shadow1);
 }
 
-/* Settings drawer */
 .settings{
   margin-top: 10px;
   padding: 12px;
 }
+
 .settingsGrid{
   display:grid;
   gap: 10px;
@@ -211,7 +270,7 @@ html[data-design="material"] .panel{
   }
 }
 
-/* Stage grid */
+/* ---- Stage grid ---- */
 .stageGrid{
   padding: 14px;
   display: grid;
@@ -222,12 +281,14 @@ html[data-design="material"] .panel{
   .stageGrid{ grid-template-columns: 1fr 1fr; padding: 16px; }
 }
 
-.panel{
-  overflow:hidden;
-}
+.panel{ overflow:hidden; }
 .panelHdr{
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--surface2) 85%, transparent),
+    color-mix(in srgb, var(--accent2) 10%, transparent)
+  );
 }
 .panelTitle{ font-weight: 1000; }
 .panelHint{ font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -239,11 +300,10 @@ canvas{
   background: var(--canvas);
 }
 
-/* -------- Unified controls -------- */
+/* ---- Unified controls ---- */
 .btn{
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 10px 12px;
   font-weight: 1000;
   color: var(--text);
   background: color-mix(in srgb, var(--surface2) 70%, transparent);
@@ -256,11 +316,11 @@ canvas{
 .btn-primary{
   background: var(--btnFill);
   color: var(--btnFillText);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent2) 30%, transparent);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--accent2) 20%, transparent);
 }
 html[data-design="liquid"] .btn-primary{
-  box-shadow: var(--glow), 0 14px 30px rgba(0,0,0,0.35);
+  box-shadow: var(--glow), 0 18px 40px rgba(0,0,0,0.35);
 }
 
 .btn-tonal{
@@ -271,6 +331,7 @@ html[data-design="liquid"] .btn-primary{
   background: var(--btnGhost);
 }
 
+/* Material-ish shapes slightly less bubbly */
 html[data-design="material"] .btn{
   border-radius: 18px;
 }
@@ -279,7 +340,7 @@ html[data-design="material"] .btn:focus-visible{
   box-shadow: var(--m3Ring);
 }
 
-/* Chips (toggles) */
+/* ---- Chips ---- */
 .chip{
   display:inline-flex;
   align-items:center;
@@ -300,7 +361,7 @@ html[data-design="material"] .btn:focus-visible{
   gap: 8px;
 }
 
-/* File picker */
+/* ---- File picker ---- */
 .filePick{
   display:flex;
   gap: 10px;
@@ -319,26 +380,34 @@ html[data-design="material"] .btn:focus-visible{
   max-width: 62vw;
 }
 
-/* Segmented control */
+/* ---- Segmented (FIXED equal width) ---- */
 .seg{
-  display:inline-flex;
+  display:flex;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 999px;
   overflow:hidden;
   background: var(--surface2);
 }
 .segbtn{
-  border:0;
-  padding: 10px 14px;
+  flex: 1 1 0;
+  width: 0;
+  border: 0;
+  padding: 12px 14px;
   background: transparent;
   color: var(--text);
   font-weight: 1000;
+  text-align:center;
 }
 .segbtn.active{
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 38%, transparent),
+    color-mix(in srgb, var(--accent2) 24%, transparent)
+  );
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent2) 35%, transparent) inset;
 }
 
+/* ---- Select row ---- */
 .selectRow{
   display:flex;
   flex-wrap: wrap;
@@ -368,7 +437,7 @@ html[data-design="material"] .btn:focus-visible{
   font-weight: 1000;
 }
 
-/* Status + readout */
+/* ---- Status + readout ---- */
 .status{
   margin-top: 10px;
   padding: 10px 12px;
@@ -384,7 +453,7 @@ html[data-design="material"] .btn:focus-visible{
   gap: 4px;
 }
 
-/* Advanced section */
+/* ---- Advanced ---- */
 .advanced{
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -460,9 +529,12 @@ html[data-design="material"] .btn:focus-visible{
   font-weight: 1000;
 }
 
-/* Mobile tightening */
+/* Mobile */
 @media (max-width: 520px){
   .filePick input{ width: 180px; max-width: 56vw; }
-  .btn{ padding: 10px 11px; }
   .settings{ padding: 10px; }
+  .transport{ gap: 8px; }
+  .btn-icon{ height: 62px; }
+  .btn-gear{ width: 62px; }
+  .btn-icon svg{ width: 32px; height: 32px; }
 }
