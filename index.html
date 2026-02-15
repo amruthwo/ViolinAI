@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#111111">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
 
@@ -29,6 +29,9 @@
     </symbol>
     <symbol id="i-gear" viewBox="0 0 24 24">
       <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.57.23-1.11.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.98a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L1.83 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.64.22l2.39-.96c.52.4 1.06.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.57-.23 1.11-.54 1.63-.94l2.39.96c.24.1.51.01.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"></path>
+    </symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24">
+      <path d="M16 3h5v5h-2V6.41l-3.29 3.3-1.42-1.42 3.3-3.29H16V3zM4 7h6v2H4V7zm0 8h6v2H4v-2zm16.59 2.59-3.3-3.3 1.42-1.42 3.29 3.29V15h2v5h-5v-2h1.59zM13.41 12.59 11 10.17V8.76l3.83 3.83-1.42 1.42z"></path>
     </symbol>
   </svg>
 
@@ -90,6 +93,12 @@
               </select>
             </label>
 
+            <!-- shows only when resolved design == material -->
+            <button id="m3ShuffleBtn" class="btn btn-tonal btn-pill ripple" type="button" hidden title="Shuffle Material seed color">
+              <svg class="ico"><use href="#i-shuffle"></use></svg>
+              <span>Shuffle</span>
+            </button>
+
             <button id="themeBtn" class="btn btn-tonal ripple" title="Toggle light/dark">🌙 Dark</button>
           </div>
         </div>
@@ -109,7 +118,6 @@
               <input id="countIn" type="number" min="0" max="8" step="1" value="4">
             </label>
 
-            <!-- Metronome pill now matches buttons -->
             <label class="btn btn-ghost btn-pill chiplike">
               <input id="metroOn" type="checkbox">
               <span>Metronome</span>
@@ -144,6 +152,7 @@
         <div><b>Delta:</b> <span id="deltaTxt">—</span></div>
         <div><b>Key:</b> <span id="keyTxt">—</span></div>
         <div><b>Source:</b> <span id="srcTxt">—</span></div>
+        <div id="m3SeedLine" style="opacity:.85"><b>M3 seed:</b> <span id="m3SeedTxt">—</span></div>
       </div>
     </header>
 
@@ -172,6 +181,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pitchy@4.1.0/dist/pitchy.umd.min.js"></script>
-  <script src="app.js?v=10"></script>
+
+  <!-- app.js is now a module so it can import Material Color Utilities -->
+  <script type="module" src="app.js?v=11"></script>
 </body>
 </html>
