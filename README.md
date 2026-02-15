@@ -1,4 +1,4 @@
-# Violin Falling Notes
+# Violin AI - (Because I vibe coded this for my girlfriend)
 *A minimal tutor app for learning violin*
 
 **Features**
