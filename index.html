@@ -4,9 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#111111" />
-  <title>ViolinAI — Falling Notes</title>
+  <title>ViolinAI</title>
 
-  <!-- If you have an old style.css linked, remove/comment it out to avoid overrides. -->
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <style>
     :root{
@@ -40,7 +44,7 @@
       --danger:#ff4d6d;
       --gridGap:12px;
 
-      --fallingMinGap: 74px; /* more vertical spacing */
+      --fallingMinGap: 84px; /* a bit more breathing room */
     }
 
     html[data-theme="light"]{
@@ -77,29 +81,48 @@
       gap: var(--gridGap);
     }
 
+    /* NEW header layout */
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
+      display:grid;
+      grid-template-columns: auto 1fr auto;
       gap: 10px;
+      align-items:center;
     }
 
-    .brand{
+    .topLeft{
       display:flex;
       align-items:center;
       gap:10px;
-      font-weight:900;
-      letter-spacing:.2px;
+      min-width: 92px;
     }
 
-    .brand .tag{
-      font-weight:800;
-      font-size:12px;
-      opacity:.75;
-      padding:6px 10px;
-      border:1px solid var(--border);
-      border-radius:999px;
+    .appIcon{
+      width:34px;height:34px;border-radius:10px;box-shadow:var(--shadow2);
+      flex: 0 0 auto;
+    }
+
+    .iconBtn{
+      width: var(--pillH);
+      height: var(--pillH);
+      border-radius: 999px;
+      padding:0;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .headerTitle{
+      text-align:center;
+      font-weight:900;
+      letter-spacing:.2px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      padding: 6px 10px;
+      border:1px solid color-mix(in srgb, var(--border) 76%, transparent);
+      border-radius: 999px;
       background: color-mix(in srgb, var(--surface) 72%, transparent);
+      box-shadow: var(--shadow2);
     }
 
     .card{
@@ -205,13 +228,6 @@
     }
     .chkPill input{ transform: scale(1.1); }
 
-    .file{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex-wrap:wrap;
-    }
-
     .settingsBtn{ width: var(--pillH); padding:0; }
     #settingsPanel[hidden]{ display:none; }
 
@@ -259,8 +275,6 @@
       border:1px solid var(--border);
       background: var(--canvas);
     }
-
-    /* No scroll container for sheet; we show a forward-looking window */
     #sheetScroll{ overflow: hidden; }
 
     .statusRow{
@@ -356,7 +370,6 @@
       .readoutGrid{ grid-template-columns: 1fr; }
     }
 
-    /* Transport: force single-row, 4 equal buttons on small phones */
     @media (max-width: 520px){
       .transportRow{
         display:grid !important;
@@ -379,12 +392,19 @@
 <body>
   <div class="wrap">
     <div class="topbar">
-      <div class="brand">
-        <img src="icon-192.png" alt="" style="width:34px;height:34px;border-radius:10px;box-shadow:var(--shadow2);" />
-        <div>ViolinAI</div>
-        <div class="tag">v14</div>
+      <div class="topLeft">
+        <img src="icons/icon-192.png" alt="" class="appIcon" />
+        <button id="openBtn" class="btn iconBtn ripple" title="Open / Load MIDI or MusicXML">
+          <svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2zm12 4H4v10h18V8z"/>
+          </svg>
+        </button>
+        <input id="scoreFile" type="file" accept=".mid,.midi,.xml,.musicxml" hidden />
       </div>
-      <button id="settingsBtn" class="btn settingsBtn ripple" title="Settings" aria-expanded="false">
+
+      <div id="headerTitle" class="headerTitle" title="Load MIDI or MusicXML">Load MIDI or MusicXML</div>
+
+      <button id="settingsBtn" class="btn iconBtn ripple" title="Settings" aria-expanded="false">
         <svg class="ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="2"/>
           <path d="M19.4 15a8.6 8.6 0 0 0 .1-6l-2 0-.6-1.5 1.4-1.4a10 10 0 0 0-4.2-2.4L13 5l-2 0-.9-1.8A10 10 0 0 0 5.9 5.6L7.3 7 6.7 8.5l-2 0a8.6 8.6 0 0 0 0 6l2 0 .6 1.5-1.4 1.4a10 10 0 0 0 4.2 2.4L11 19l2 0 .9 1.8a10 10 0 0 0 4.2-2.4L16.7 17l.6-1.5 2 0Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -440,15 +460,6 @@
       </div>
 
       <div class="bd">
-        <div class="file">
-          <label style="font-weight:900;">Choose File:</label>
-          <input id="scoreFile" type="file" accept=".mid,.midi,.xml,.musicxml" />
-          <span style="opacity:.8;">Source: <code id="srcTxt">—</code></span>
-          <span style="opacity:.8;">Key: <code id="keyTxt">—</code></span>
-        </div>
-
-        <div style="height:12px;"></div>
-
         <div class="pillRow">
           <div class="seg">
             <button id="modePreview" class="active">Preview</button>
@@ -551,6 +562,6 @@
   <!-- MIDI parser provides global Midi -->
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
 
-  <script type="module" src="app.js?v=14"></script>
+  <script type="module" src="app.js?v=15"></script>
 </body>
 </html>
