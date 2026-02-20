@@ -124,7 +124,7 @@ const tempoSteps = [0.25,0.33,0.5,0.67,0.75,1.0,1.25,1.5,2.0];
 function setTempoMul(x){
   tempoMul = x;
   tempoVal.textContent = `${tempoMul.toFixed(2)}×`;
-  persistLoop(); // not required, but consistent
+  persistLoop();
 }
 function tempoStep(delta){
   const idx = tempoSteps.reduce((best, v, i) =>
@@ -233,7 +233,7 @@ async function loadFile(file){
 
   score.bpm = parsed.bpm || 120;
   score.timeSig = parsed.timeSig || { num: 4, den: 4 };
-  score.events = buildScoreEvents(parsed.notes, score.bpm, score.timeSig); // quantized + rests
+  score.events = buildScoreEvents(parsed.notes, score.bpm, score.timeSig);
   score.measures = buildMeasures(score.events, score.timeSig);
   score.fileName = file.name;
 
@@ -262,7 +262,6 @@ function parseMIDI(arrayBuffer){
   const ts = midi.header.timeSignatures?.[0];
   const timeSig = ts ? { num: ts.timeSignature[0], den: ts.timeSignature[1] } : { num:4, den:4 };
 
-  // Collect notes from all tracks
   const notes = [];
   for (const tr of midi.tracks){
     for (const n of tr.notes){
@@ -281,16 +280,12 @@ function parseMIDI(arrayBuffer){
 function parseMusicXML(xmlText){
   const dom = new DOMParser().parseFromString(xmlText, "text/xml");
   const parserErr = dom.querySelector("parsererror");
-  if (parserErr) {
-    console.warn("XML parse error:", parserErr.textContent);
-  }
+  if (parserErr) console.warn("XML parse error:", parserErr.textContent);
 
-  // Tempo: best-effort
   let bpm = 120;
   const soundTempo = dom.querySelector('sound[tempo]');
   if (soundTempo) bpm = Number(soundTempo.getAttribute("tempo")) || bpm;
 
-  // Time signature: best-effort
   let timeSig = { num: 4, den: 4 };
   const ts = dom.querySelector("time");
   if (ts){
@@ -299,11 +294,9 @@ function parseMusicXML(xmlText){
     if (beats && beatType) timeSig = { num: beats, den: beatType };
   }
 
-  // Divisions
   const divEl = dom.querySelector("divisions");
   const divisions = Number(divEl?.textContent || "1") || 1;
 
-  // Extract notes measure-order
   const notes = [];
   let cursorDiv = 0;
   const measures = [...dom.querySelectorAll("measure")];
@@ -323,13 +316,12 @@ function parseMusicXML(xmlText){
           const midi = stepOctAlterToMidi(step, octave, alter);
           notes.push({
             midi,
-            timeSec: (voiceTimeDiv / divisions) * (60 / bpm), // using 1 quarter-note == divisions
+            timeSec: (voiceTimeDiv / divisions) * (60 / bpm),
             durSec: (durDiv / divisions) * (60 / bpm)
           });
         }
         cursorDiv += durDiv;
       }
-      // ignore backup/forward for now (simple parts)
       if (el.tagName === "backup"){
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
         cursorDiv -= durDiv;
@@ -354,14 +346,13 @@ function stepOctAlterToMidi(step, octave, alter){
 function beatsPerMeasure(ts){
   return ts.num * (4 / ts.den);
 }
-function quantStepBeats(){ return 0.25; } // 16th note in beats
+function quantStepBeats(){ return 0.25; } // 16th note
 function secToBeats(sec, bpm){ return sec * (bpm / 60); }
 
 function buildScoreEvents(notes, bpm, ts){
   const q = quantStepBeats();
   const bpmEff = bpm;
 
-  // Quantize notes to 16th grid
   const qNotes = notes.map(n => {
     const b = secToBeats(n.timeSec, bpmEff);
     const d = Math.max(q, secToBeats(n.durSec, bpmEff));
@@ -371,7 +362,6 @@ function buildScoreEvents(notes, bpm, ts){
     return { kind:"note", midi:n.midi, startBeat: qb, durBeat: qd };
   }).sort((a,b)=>a.startBeat-b.startBeat);
 
-  // Remove overlaps: ensure non-decreasing start times; clamp durations if needed
   for (let i=0;i<qNotes.length-1;i++){
     const a = qNotes[i];
     const b = qNotes[i+1];
@@ -381,7 +371,6 @@ function buildScoreEvents(notes, bpm, ts){
     }
   }
 
-  // Build with rests
   const events = [];
   let cursor = 0;
   for (const n of qNotes){
@@ -392,7 +381,6 @@ function buildScoreEvents(notes, bpm, ts){
     cursor = Math.max(cursor, n.startBeat + n.durBeat);
   }
 
-  // Snap total length to end-of-measure
   const mLen = beatsPerMeasure(ts);
   const endTo = Math.ceil(cursor / mLen) * mLen;
   if (endTo > cursor){
@@ -462,15 +450,14 @@ function playBeep(midi, when, durSec){
 }
 
 function scoreBeatToSec(beat){
-  // tempoMul slows down/speeds up playback: effective bpm = score.bpm * tempoMul
   const bpmEff = score.bpm * tempoMul;
   return (60 / bpmEff) * beat;
 }
 
 const playhead = {
-  idx: 0,      // index into score.events (notes+rests)
-  t0: 0,       // beat position at play start
-  startedAt: 0 // audioCtx time at play start
+  idx: 0,
+  t0: 0,
+  startedAt: 0
 };
 
 function resetPlayhead(){
@@ -490,18 +477,15 @@ function startPreview(){
   audio.isPlaying = true;
   const now = ctx.currentTime;
 
-  // Count-in: delay playback start, but keep visuals aligned
   const countInBeats = (Number(countInEl.value||0) || 0) * (4 / score.timeSig.den);
   const countInSec = scoreBeatToSec(countInBeats);
 
-  // If resuming, adjust startedAt
   if (audio.pauseAt > 0){
     playhead.startedAt = now - audio.pauseAt;
   }else{
     playhead.startedAt = now + countInSec;
   }
 
-  // Start scheduling
   if (audio.schedTimer) clearInterval(audio.schedTimer);
   audio.schedTimer = setInterval(() => schedulerTick(), 25);
 
@@ -518,36 +502,23 @@ function pausePreview(){
   status("Paused");
 }
 
-function stopAll(){
-  audio.isPlaying = false;
-  audio.pauseAt = 0;
-  if (audio.schedTimer) clearInterval(audio.schedTimer);
-  audio.schedTimer = null;
-  resetPlayhead();
-  status("Stopped");
-}
-
 function schedulerTick(){
   if (!audio.isPlaying) return;
   const ctx = ensureAudio();
 
-  const lookahead = 0.12; // seconds
+  const lookahead = 0.12;
   const now = ctx.currentTime;
 
-  // current play position in beats, based on audio clock
   const tSec = now - playhead.startedAt;
   const tBeat = secToBeats(Math.max(0, tSec), score.bpm * tempoMul);
 
-  // Advance idx based on beats
   while (playhead.idx < score.events.length){
     const ev = score.events[playhead.idx];
     const evStart = ev.startBeat;
     if (evStart >= tBeat) break;
-    // if we've passed this event, advance idx
     playhead.idx++;
   }
 
-  // Schedule notes in window
   while (playhead.idx < score.events.length){
     const ev = score.events[playhead.idx];
     const evStartSec = playhead.startedAt + scoreBeatToSec(ev.startBeat);
@@ -557,13 +528,10 @@ function schedulerTick(){
       const durSec = scoreBeatToSec(ev.durBeat);
       playBeep(ev.midi, evStartSec, Math.max(0.06, durSec));
     }
-
     playhead.idx++;
   }
 
-  // End-of-song
   if (playhead.idx >= score.events.length){
-    // allow tail
     setTimeout(() => stopAll(), 250);
   }
 }
@@ -591,12 +559,10 @@ let mic = {
   buf: null,
   raf: null,
 
-  // detection
   freq: 0,
   clarity: 0,
   rms: 0,
 
-  // latch behavior
   latched: false,
   stableMs: 0,
   releaseMs: 0,
@@ -666,9 +632,8 @@ function stopMic(){
   micStatusTxt.textContent = "Mic stopped";
 }
 
-// Autocorrelation pitch detection (simple + robust enough for violin/whistle)
+// Autocorrelation pitch detection
 function detectPitchACF(buf, sampleRate){
-  // Compute RMS
   let sum = 0;
   for (let i=0;i<buf.length;i++){
     const v = buf[i];
@@ -676,23 +641,20 @@ function detectPitchACF(buf, sampleRate){
   }
   const rms = Math.sqrt(sum / buf.length);
 
-  // If too quiet, bail
   if (rms < 0.01) return { freq: 0, clarity: 0, rms };
 
-  // Remove DC
   let mean = 0;
   for (let i=0;i<buf.length;i++) mean += buf[i];
   mean /= buf.length;
   for (let i=0;i<buf.length;i++) buf[i] -= mean;
 
   const SIZE = buf.length;
-  const MAX_LAG = Math.floor(sampleRate / 50);   // ~50 Hz
-  const MIN_LAG = Math.floor(sampleRate / 1200); // ~1200 Hz
+  const MAX_LAG = Math.floor(sampleRate / 50);
+  const MIN_LAG = Math.floor(sampleRate / 1200);
 
   let bestLag = -1;
   let bestCorr = 0;
 
-  // normalized autocorrelation
   for (let lag = MIN_LAG; lag <= MAX_LAG; lag++){
     let corr = 0;
     let norm1 = 0;
@@ -712,9 +674,7 @@ function detectPitchACF(buf, sampleRate){
     }
   }
 
-  // clarity heuristic
   const clarity = Math.max(0, Math.min(1, bestCorr));
-
   if (bestLag <= 0 || clarity < 0.2) return { freq: 0, clarity, rms };
 
   const freq = sampleRate / bestLag;
@@ -732,12 +692,10 @@ function midiToName(m){
   return `${name}${oct}`;
 }
 function centsOff(midiA, midiB){
-  // midiA actual, midiB target
   return (midiA - midiB) * 100;
 }
 
 function getCurrentTargetNote(){
-  // Find next NOTE event at/after playhead.idx in learn mode
   let i = playhead.idx;
   while (i < score.events.length && score.events[i].kind !== "note") i++;
   if (i >= score.events.length) return null;
@@ -755,9 +713,8 @@ function updateTargetReadout(){
   targetTxt.textContent = `${name} (${finger.string}, ${finger.finger})`;
 }
 
-// Simple violin string/finger hint for first position
+// Simple violin hints (first position-ish)
 function violinFingerForMidi(midi){
-  // Strings: G3=55, D4=62, A4=69, E5=76
   const strings = [
     { name:"G", open:55 },
     { name:"D", open:62 },
@@ -765,15 +722,12 @@ function violinFingerForMidi(midi){
     { name:"E", open:76 },
   ];
 
-  // pick highest string that can play note within ~7 semitones (1st position)
   let best = strings[0];
   for (const s of strings){
     if (midi >= s.open && midi <= s.open + 7) best = s;
   }
   const semis = Math.max(0, midi - best.open);
-  // crude mapping:
-  // 0 open, 1 low1, 2 1, 3 low2, 4 2, 5 low3, 6 3, 7 4
-  // We'll just show 0-4 with approximate:
+
   let finger = 0;
   if (semis === 0) finger = 0;
   else if (semis <= 2) finger = 1;
@@ -784,7 +738,6 @@ function violinFingerForMidi(midi){
   return { string: best.name, finger };
 }
 
-// Learn-mode advance with latch (fixes A4 A4 A4 fast-forward)
 function learnTryAdvance(nowMs){
   const t = getCurrentTargetNote();
   if (!t) return;
@@ -792,7 +745,6 @@ function learnTryAdvance(nowMs){
   const tol = Number(tolCentsEl.value||45) || 45;
   const requireStable = waitModeEl.checked;
 
-  // Conditions for "match"
   if (mic.freq <= 0){
     mic.stableMs = 0;
     mic.releaseMs += (nowMs - mic.lastFrameTs);
@@ -803,7 +755,6 @@ function learnTryAdvance(nowMs){
   const delta = centsOff(actualMidi, t.ev.midi);
   const abs = Math.abs(delta);
 
-  // UI readout
   heardTxt.textContent = `${midiToName(actualMidi)} (~${Math.round(actualMidi*10)/10})`;
   clarityTxt.textContent = mic.clarity.toFixed(2);
   deltaTxt.textContent = `${(delta>=0?"+":"")}${Math.round(delta)} cents`;
@@ -811,7 +762,6 @@ function learnTryAdvance(nowMs){
 
   const match = (abs <= tol) && (mic.clarity >= 0.55) && (mic.rms >= 0.012);
 
-  // Release logic
   const releaseCond = (!match) || (mic.clarity < 0.35) || (mic.rms < 0.009);
   if (releaseCond){
     mic.releaseMs += (nowMs - mic.lastFrameTs);
@@ -819,7 +769,6 @@ function learnTryAdvance(nowMs){
     mic.releaseMs = 0;
   }
 
-  // unlatch if release sustained
   if (mic.latched && mic.releaseMs >= 140){
     mic.latched = false;
     mic.stableMs = 0;
@@ -827,22 +776,18 @@ function learnTryAdvance(nowMs){
 
   if (mic.latched) return;
 
-  // stable logic (optional)
   if (match){
     mic.stableMs += (nowMs - mic.lastFrameTs);
   } else {
     mic.stableMs = 0;
   }
 
-  // time gate based on duration (A+C behavior)
   const minGateMs = Math.max(120, scoreBeatToSec(t.ev.durBeat) * 1000 * 0.35);
-
   const stableOk = !requireStable || (mic.stableMs >= 120);
   const gateOk = (nowMs - mic.lastAdvanceAt) >= minGateMs;
 
   if (match && stableOk && gateOk){
-    // Advance exactly ONE note (even if same pitch repeats)
-    playhead.idx = t.idx + 1;
+    playhead.idx = t.idx + 1;      // advance ONE note only
     mic.latched = true;
     mic.lastAdvanceAt = nowMs;
     mic.stableMs = 0;
@@ -854,7 +799,6 @@ function learnTryAdvance(nowMs){
 function micLoop(ts){
   if (!mic.analyser) return;
 
-  const dt = ts - mic.lastFrameTs;
   mic.lastFrameTs = ts;
 
   mic.analyser.getFloatTimeDomainData(mic.buf);
@@ -864,7 +808,7 @@ function micLoop(ts){
   mic.rms = det.rms;
 
   if (mode === "learn"){
-    micBtn.style.display = ""; // visible
+    micBtn.style.display = "";
     micStatusTxt.textContent = "Mic running";
     learnTryAdvance(ts);
   }
@@ -872,7 +816,7 @@ function micLoop(ts){
   mic.raf = requestAnimationFrame(micLoop);
 }
 
-// ---------- Rendering (Falling + Sheet) ----------
+// ---------- Rendering ----------
 function resizeCanvasToDisplaySize(c, minH=260){
   const dpr = window.devicePixelRatio || 1;
   const rect = c.getBoundingClientRect();
@@ -889,7 +833,7 @@ function nowPlayBeat(){
   return secToBeats(tSec, score.bpm * tempoMul);
 }
 
-// Falling notes display settings
+// Falling notes lanes
 const lanes = [
   { name:"G", open:55 },
   { name:"D", open:62 },
@@ -897,7 +841,6 @@ const lanes = [
   { name:"E", open:76 }
 ];
 function laneForMidi(m){
-  // choose lane with open <= m (prefer highest string)
   let best = lanes[0];
   for (const s of lanes){
     if (m >= s.open) best = s;
@@ -911,18 +854,14 @@ function drawFalling(){
 
   ctx.clearRect(0,0,W,H);
 
-  // lanes
   const pad = 18 * (window.devicePixelRatio||1);
   const laneW = (W - pad*2) / 4;
 
-  // background lanes
-  ctx.globalAlpha = 1;
   for (let i=0;i<4;i++){
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--lane").trim() || "#121843";
     ctx.fillRect(pad + i*laneW, 0, laneW-2, H);
   }
 
-  // hit line
   const hitY = H * 0.72;
   ctx.strokeStyle = "rgba(255,255,255,.22)";
   ctx.lineWidth = 2;
@@ -931,18 +870,13 @@ function drawFalling(){
   ctx.lineTo(W-pad, hitY);
   ctx.stroke();
 
-  // Determine beat window
   const bNow = (mode === "preview" && audio.isPlaying) ? nowPlayBeat() : 0;
-  const secondsPerBeat = 60 / (score.bpm * tempoMul);
-  const beatsAhead = (H / (Number(getComputedStyle(document.documentElement).getPropertyValue("--fallingMinGap").replace("px","")) || 84)) * 0.9;
 
-  // Show only next few notes for low density
   const noteEvents = score.events.filter(e => e.kind==="note");
 
-  // compute current note index for visualization: find first note whose startBeat >= bNow
   let idx0 = 0;
   while (idx0 < noteEvents.length && noteEvents[idx0].startBeat < bNow) idx0++;
-  const showCount = 3; // low density
+  const showCount = 3;
   const windowNotes = noteEvents.slice(Math.max(0, idx0-1), Math.max(0, idx0-1) + showCount + 1);
 
   for (const ev of windowNotes){
@@ -952,10 +886,9 @@ function drawFalling(){
     const w = laneW - 16;
 
     const dyBeats = ev.startBeat - bNow;
-    const y = hitY - dyBeats * (H * 0.22); // scale (guitar-hero-ish)
-    const rectH = Math.max(44, Math.min(72, ev.durBeat * 60)); // bigger rectangles
+    const y = hitY - dyBeats * (H * 0.22);
+    const rectH = Math.max(44, Math.min(72, ev.durBeat * 60));
 
-    // color based on state
     let fill = "rgba(200,200,200,.28)";
     if (Math.abs(dyBeats) < 0.12) fill = "rgba(91,140,255,.80)";
     if (dyBeats < -0.25) fill = "rgba(255,176,32,.55)";
@@ -964,13 +897,11 @@ function drawFalling(){
     roundRect(ctx, x, y - rectH/2, w, rectH, 14);
     ctx.fill();
 
-    // labels (note + finger)
     ctx.fillStyle = "rgba(255,255,255,.95)";
     ctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
     const name = midiToName(ev.midi);
     const fing = violinFingerForMidi(ev.midi);
 
-    // two-line label with spacing
     const ty = y - 4;
     ctx.fillText(name, x + 12, ty);
     ctx.globalAlpha = 0.92;
@@ -989,7 +920,6 @@ function roundRect(c,x,y,w,h,r){
   c.closePath();
 }
 
-// ---- Sheet music (Treble only, current + next measure) ----
 function midiToStepOct(midi){
   const n = Math.round(midi);
   const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -1003,25 +933,22 @@ function diatonicNumber(step, oct){
   const map = { C:0, D:1, E:2, F:3, G:4, A:5, B:6 };
   return (oct * 7) + (map[step] ?? 0);
 }
-const E4_DIAT = diatonicNumber("E",4); // bottom line treble staff
+const E4_DIAT = diatonicNumber("E",4);
 
 function staffYForMidi(midi, staffBottomY, lineGap){
   const { step, oct } = midiToStepOct(midi);
   const dn = diatonicNumber(step, oct);
-  const pos = dn - E4_DIAT; // each +1 is line/space step
+  const pos = dn - E4_DIAT;
   return staffBottomY - pos * (lineGap/2);
 }
 
 function durKind(beats){
-  // quant grid is 16th (0.25)
   const b = beats;
-  // prefer common values
   if (Math.abs(b - 4) < 0.001) return "whole";
   if (Math.abs(b - 2) < 0.001) return "half";
   if (Math.abs(b - 1) < 0.001) return "quarter";
   if (Math.abs(b - 0.5) < 0.001) return "eighth";
   if (Math.abs(b - 0.25) < 0.001) return "sixteenth";
-  // fallback: map ranges
   if (b >= 3) return "whole";
   if (b >= 1.5) return "half";
   if (b >= 0.75) return "quarter";
@@ -1030,7 +957,6 @@ function durKind(beats){
 }
 
 function drawTrebleClef(x, y){
-  // Best-effort: use unicode if available
   sctx.save();
   sctx.fillStyle = "rgba(255,255,255,.92)";
   sctx.font = `${Math.round(38*(window.devicePixelRatio||1))}px serif`;
@@ -1050,14 +976,12 @@ function drawSheet(){
     return;
   }
 
-  // staff layout
   const padX = 18 * (window.devicePixelRatio||1);
   const padY = 18 * (window.devicePixelRatio||1);
-  const lineGap = 14 * (window.devicePixelRatio||1); // between staff lines
+  const lineGap = 14 * (window.devicePixelRatio||1);
   const staffTopY = padY + 18*(window.devicePixelRatio||1);
   const staffBottomY = staffTopY + 4*lineGap;
 
-  // draw staff lines
   sctx.strokeStyle = "rgba(255,255,255,.20)";
   sctx.lineWidth = 2;
   for (let i=0;i<5;i++){
@@ -1068,7 +992,6 @@ function drawSheet(){
     sctx.stroke();
   }
 
-  // clef
   drawTrebleClef(padX + 2, staffBottomY + lineGap*0.25);
 
   if (!score.measures.length){
@@ -1078,23 +1001,19 @@ function drawSheet(){
     return;
   }
 
-  // current beat for window
   const bNow = (mode==="preview" && audio.isPlaying) ? nowPlayBeat() : 0;
   const mLen = beatsPerMeasure(score.timeSig);
   const curMeasureIdx = Math.max(0, Math.min(score.measures.length-1, Math.floor(bNow / mLen)));
   const m0 = score.measures[curMeasureIdx];
   const m1 = score.measures[Math.min(score.measures.length-1, curMeasureIdx+1)];
 
-  // measure window: current + next (2 measures)
   const windowMeasures = [m0, m1];
 
-  // geometry
   const clefW = 52*(window.devicePixelRatio||1);
   const usableW = (W - padX*2 - clefW);
   const measureW = usableW / 2;
   const x0 = padX + clefW;
 
-  // draw barlines and measure labels
   sctx.strokeStyle = "rgba(255,255,255,.25)";
   sctx.lineWidth = 2;
   for (let i=0;i<3;i++){
@@ -1105,40 +1024,28 @@ function drawSheet(){
     sctx.stroke();
   }
 
-  // draw events
   for (let mi=0; mi<2; mi++){
     const m = windowMeasures[mi];
     const baseX = x0 + mi*measureW;
     const beatSpan = mLen;
 
-    // group notes for beaming: consecutive eighth/sixteenth without rests
     const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
-
-    // helper to x position
     const xForBeat = (beat) => baseX + ( (beat - m.startBeat) / beatSpan ) * (measureW - 14*(window.devicePixelRatio||1)) + 8*(window.devicePixelRatio||1);
 
-    // draw each event
     for (const ev of evs){
       const x = xForBeat(ev.startBeat);
 
       if (ev.kind === "rest"){
-        // simple rest rendering using text fallback
         sctx.fillStyle = "rgba(255,255,255,.75)";
         sctx.font = `${Math.round(18*(window.devicePixelRatio||1))}px serif`;
         const k = durKind(ev.durBeat);
         const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
-        // If glyph missing, draw a small zigzag-ish mark
-        if (glyph === "𝄻" || glyph === "𝄼" || glyph === "𝄽" || glyph === "𝄾" || glyph === "𝄿"){
-          sctx.fillText(glyph, x, staffTopY + 3.1*lineGap);
-        } else {
-          sctx.fillRect(x, staffTopY + 2*lineGap, 10, 4);
-        }
+        sctx.fillText(glyph, x, staffTopY + 3.1*lineGap);
         continue;
       }
 
       const y = staffYForMidi(ev.midi, staffBottomY, lineGap);
 
-      // notehead
       const kind = durKind(ev.durBeat);
       const filled = !(kind==="whole" || kind==="half");
       const headW = 14*(window.devicePixelRatio||1);
@@ -1156,7 +1063,6 @@ function drawSheet(){
       sctx.stroke();
       sctx.restore();
 
-      // accidental (simple #)
       const st = midiToStepOct(ev.midi);
       if (st.accidental){
         sctx.fillStyle = "rgba(255,255,255,.86)";
@@ -1164,9 +1070,8 @@ function drawSheet(){
         sctx.fillText(st.accidental, x - 18*(window.devicePixelRatio||1), y + 6*(window.devicePixelRatio||1));
       }
 
-      // stem + flags
       if (kind !== "whole"){
-        const stemUp = (y > staffTopY + 2*lineGap); // below middle -> up
+        const stemUp = (y > staffTopY + 2*lineGap);
         sctx.strokeStyle = "rgba(255,255,255,.92)";
         sctx.lineWidth = 2;
 
@@ -1180,15 +1085,11 @@ function drawSheet(){
         sctx.lineTo(stemX, y2);
         sctx.stroke();
 
-        // flags for eighth/sixteenth (beams are best-effort in v15; flags always present)
         if (kind === "eighth" || kind === "sixteenth"){
           const dir = stemUp ? -1 : 1;
           const fx = stemX;
           const fy = y2;
-          sctx.strokeStyle = "rgba(255,255,255,.92)";
-          sctx.lineWidth = 2;
 
-          // 1st flag
           sctx.beginPath();
           sctx.moveTo(fx, fy);
           sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy + 6*dir, fx + 6*(window.devicePixelRatio||1), fy + 14*dir);
@@ -1204,7 +1105,6 @@ function drawSheet(){
         }
       }
 
-      // ledger lines (simple)
       const yMin = staffTopY;
       const yMax = staffBottomY;
       sctx.strokeStyle = "rgba(255,255,255,.20)";
@@ -1227,7 +1127,6 @@ function drawSheet(){
     }
   }
 
-  // highlight play position (simple caret)
   if (mode==="preview" && audio.isPlaying){
     const xCaret = x0 + ( (bNow - m0.startBeat) / mLen ) * measureW;
     sctx.strokeStyle = "rgba(91,140,255,.9)";
@@ -1243,12 +1142,7 @@ function drawSheet(){
 function renderLoop(){
   drawSheet();
   if (showFalling.checked) drawFalling();
-
-  // update target readout in preview for convenience
-  if (score.events.length){
-    updateTargetReadout();
-  }
-
+  if (score.events.length) updateTargetReadout();
   requestAnimationFrame(renderLoop);
 }
 requestAnimationFrame(renderLoop);
@@ -1261,23 +1155,8 @@ function updateTargetAtStop(){
   levelTxt.textContent = "—";
   updateTargetReadout();
 }
-function stopAllAndReset(){
-  stopAll();
-  updateTargetAtStop();
-}
 
-function stopAllWrapper(){
-  stopAllAndReset();
-  stopMic();
-}
-
-function stopAllHard(){
-  stopAllWrapper();
-}
-
-function stopAllPublic(){ stopAllHard(); }
-
-// keep stopAll exposed to above callbacks
+// ✅ Single stopAll() exists (no duplicates)
 function stopAll(){
   audio.isPlaying = false;
   audio.pauseAt = 0;
