@@ -43,6 +43,9 @@ const $ = (id) => document.getElementById(id);
     }
   }catch(e){ /* ignore */ }
 })();
+// Safe canvas contexts
+window.fallingCtx = window.fallingCtx || (window.fallingCanvas ? window.fallingCanvas.getContext("2d") : null);
+window.sheetCtx   = window.sheetCtx   || (window.sheetCanvas   ? window.sheetCanvas.getContext("2d")   : null);
 // UI
 const openBtn = $("openBtn");
 const scoreFile = $("scoreFile");
@@ -1159,11 +1162,10 @@ function laneForMidi(m){
 
 function drawFalling(){
   const canvas = window.fallingCanvas;
-  if (!canvas || !fallingCtx) return;
-  if (!canvas || !fallingCtx) return;
-  // Falling view with sustain-length rectangles (duration-true) and clearer labels.
-  resizeCanvasToDisplaySize(canvas, 360);
-  const W = canvas.width, H = canvas.height;
+  if (!canvas) return;
+  const ctx = window.fallingCtx || canvas.getContext('2d');
+  window.fallingCtx = ctx;
+  if (!ctx) return;
   ctx.clearRect(0,0,W,H);
 
   if (!showFalling.checked){
