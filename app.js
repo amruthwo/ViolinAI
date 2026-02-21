@@ -1023,18 +1023,23 @@ function drawFalling(){
     const w = laneW - 16;
 
     const dyBeats = ev.startBeat - bNow;
-    const y = hitY - dyBeats * (H * 0.22);
-    // Height reflects duration (longer notes look taller), but keep short notes readable.
-    const k = durKind(ev.durBeat);
-    const base = 56; // treat 1/16 as our baseline size (roughly what quarter used to feel like)
-    let rectH =
-      (k === "sixteenth") ? base :
-      (k === "eighth")    ? base + 6 :
-      (k === "quarter")   ? base + 14 :
-      (k === "half")      ? base + 30 :
-      (k === "whole")     ? base + 44 :
-      base + 14;
-    rectH = Math.max(52, Math.min(120, rectH));
+
+// Falling time scale: pixels-per-beat. This controls both fall speed and sustain height,
+// so longer notes literally appear "longer" relative to the play-now bar.
+const pxPerBeat = (H * 0.22);
+
+// Where the note *ends* (i.e., its "start moment") hits the play line.
+const yBottom = hitY - dyBeats * pxPerBeat;
+
+// Sustain height is proportional to duration in beats (with a minimum so 1/16 isn't tiny on phones).
+const minH = 56; // baseline readable size for a 1/16 note
+const maxH = H * 0.55; // avoid absurdly tall whole notes on small screens
+let rectH = ev.durBeat * pxPerBeat;
+rectH = Math.max(minH, Math.min(maxH, rectH));
+
+// Draw as a sustain bar that ends at yBottom.
+const yTop = yBottom - rectH;
+const yMid = (yTop + yBottom) / 2;
 
     let fill = "rgba(200,200,200,.28)";
     if (Math.abs(dyBeats) < 0.12) fill = "rgba(91,140,255,.80)";
