@@ -1,24 +1,5 @@
 /* app.js — ViolinAI v15 */
 
-
-// --- Mic state (window-scoped to avoid module TDZ issues) ---
-window.mic = window.mic || {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
-
 const $ = (id) => document.getElementById(id);
 
 // UI
@@ -243,8 +224,16 @@ async function loadFile(file){
   let parsed;
   if (ext === "xml" || ext === "musicxml") {
     const text = new TextDecoder().decode(buf);
-    parsed = parseMusicXML(text);
+    parsed = parseMusicXML(text, /*melodyOnly*/ true);
     score.source = "MusicXML";
+  } else if (ext === "mscx") {
+    const text = new TextDecoder().decode(buf);
+    parsed = parseMSCX(text, /*melodyOnly*/ true);
+    score.source = "MSCX";
+  } else if (ext === "mscz") {
+    const mscxText = await extractMSCXFromMSCZ(buf);
+    parsed = parseMSCX(mscxText, /*melodyOnly*/ true);
+    score.source = "MSCZ";
   } else {
     parsed = parseMIDI(buf);
     score.source = "MIDI";
@@ -264,6 +253,7 @@ async function loadFile(file){
 }
 
 const score = {
+
   source: "—",
   fileName: "",
   bpm: 120,
@@ -297,7 +287,7 @@ function parseMIDI(arrayBuffer){
 }
 
 // ---------- MusicXML parsing (best-effort) ----------
-function parseMusicXML(xmlText){
+function parseMusicXML(text, melodyOnly=true){
   const dom = new DOMParser().parseFromString(xmlText, "text/xml");
   const parserErr = dom.querySelector("parsererror");
   if (parserErr) console.warn("XML parse error:", parserErr.textContent);
@@ -356,6 +346,148 @@ function parseMusicXML(xmlText){
   notes.sort((a,b) => a.timeSec - b.timeSec);
   return { bpm, timeSig, notes };
 }
+
+// ---------- MSCZ / MSCX (MuseScore) support ----------
+// MSCZ is a ZIP container that includes one or more .mscx XML files.
+// We extract the first .mscx entry and parse basic melody notes.
+async function extractMSCXFromMSCZ(arrayBuffer){
+  // Minimal ZIP reader: supports "stored" (0) and "deflate" (8).
+  const u8 = new Uint8Array(arrayBuffer);
+  const dv = new DataView(arrayBuffer);
+
+  function readU16(off){ return dv.getUint16(off, true); }
+  function readU32(off){ return dv.getUint32(off, true); }
+
+  // Find End of Central Directory (EOCD) by scanning backwards for 0x06054b50
+  let eocd = -1;
+  for (let off = u8.length - 22; off >= Math.max(0, u8.length - 65558); off--){
+    if (u8[off]===0x50 && u8[off+1]===0x4b && u8[off+2]===0x05 && u8[off+3]===0x06){ eocd = off; break; }
+  }
+  if (eocd < 0) throw new Error("MSCZ: EOCD not found (not a ZIP?)");
+
+  const cdSize = readU32(eocd + 12);
+  const cdOff  = readU32(eocd + 16);
+  let p = cdOff;
+
+  // Central directory file header signature 0x02014b50
+  const entries = [];
+  while (p < cdOff + cdSize){
+    if (!(u8[p]===0x50 && u8[p+1]===0x4b && u8[p+2]===0x01 && u8[p+3]===0x02)) break;
+    const compMethod = readU16(p + 10);
+    const compSize   = readU32(p + 20);
+    const uncompSize = readU32(p + 24);
+    const nameLen    = readU16(p + 28);
+    const extraLen   = readU16(p + 30);
+    const cmtLen     = readU16(p + 32);
+    const lfhOff     = readU32(p + 42);
+    const name = new TextDecoder().decode(u8.slice(p + 46, p + 46 + nameLen));
+    entries.push({ name, compMethod, compSize, uncompSize, lfhOff });
+    p = p + 46 + nameLen + extraLen + cmtLen;
+  }
+
+  const mscx = entries.find(e => e.name.toLowerCase().endsWith(".mscx"));
+  if (!mscx) throw new Error("MSCZ: no .mscx found");
+
+  // Local file header at lfhOff, signature 0x04034b50
+  const l = mscx.lfhOff;
+  if (!(u8[l]===0x50 && u8[l+1]===0x4b && u8[l+2]===0x03 && u8[l+3]===0x04)) throw new Error("MSCZ: bad local header");
+  const nameLen = readU16(l + 26);
+  const extraLen = readU16(l + 28);
+  const dataOff = l + 30 + nameLen + extraLen;
+  const comp = u8.slice(dataOff, dataOff + mscx.compSize);
+
+  let out;
+  if (mscx.compMethod === 0){
+    out = comp;
+  } else if (mscx.compMethod === 8){
+    if (typeof DecompressionStream === "undefined"){
+      throw new Error("MSCZ: Deflate unsupported in this browser (no DecompressionStream)");
+    }
+    const ds = new DecompressionStream("deflate-raw");
+    const blob = new Blob([comp]);
+    const decompressed = await new Response(blob.stream().pipeThrough(ds)).arrayBuffer();
+    out = new Uint8Array(decompressed);
+  } else {
+    throw new Error(`MSCZ: Unsupported compression method ${mscx.compMethod}`);
+  }
+
+  return new TextDecoder().decode(out);
+}
+
+function parseMSCX(xmlText, melodyOnly=true){
+  const doc = new DOMParser().parseFromString(xmlText, "text/xml");
+  const score = doc.querySelector("museScore, musescore, mscore");
+  if (!score) throw new Error("MSCX: Not a MuseScore XML");
+  // tempo
+  let bpm = 120;
+  const tempoEl = doc.querySelector("Tempo tempo, Tempo tempoText, Tempo text, tempo");
+  // MuseScore tempo is often in <tempo> like 2.0 (q=120 => 2.0?), varies; we’ll also look for <bpm>.
+  const bpmEl = doc.querySelector("bpm");
+  if (bpmEl && bpmEl.textContent) {
+    const b = parseFloat(bpmEl.textContent.trim());
+    if (isFinite(b) && b>20 && b<400) bpm = b;
+  }
+
+  // time signature
+  let timeSig = { num:4, den:4 };
+  const ts = doc.querySelector("TimeSig");
+  if (ts){
+    const n = ts.querySelector("sigN");
+    const d = ts.querySelector("sigD");
+    const nn = n ? parseInt(n.textContent.trim(),10) : NaN;
+    const dd = d ? parseInt(d.textContent.trim(),10) : NaN;
+    if (isFinite(nn) && isFinite(dd) && nn>0 && dd>0) timeSig = { num: nn, den: dd };
+  }
+
+  // Gather staffs and pick the one with highest average pitch (piano RH / violin staff).
+  const staffs = Array.from(doc.querySelectorAll("Staff"));
+  function midiFromPitch(p){ // MuseScore pitch is MIDI number
+    const v = parseInt((p||"").trim(), 10);
+    return isFinite(v) ? v : null;
+  }
+  function collectStaffNotes(staffEl){
+    const notes = [];
+    let beat = 0;
+    const measures = Array.from(staffEl.querySelectorAll("Measure"));
+    const durMap = { "whole":4, "half":2, "quarter":1, "eighth":0.5, "16th":0.25, "32nd":0.125 };
+    for (const meas of measures){
+      // Reset beat at measure boundary (we'll keep absolute beats with measure offset)
+      // We'll just keep running beat; MuseScore has ticks but this is good enough for beginner practice.
+      const children = Array.from(meas.children);
+      for (const el of children){
+        if (el.tagName === "Chord"){
+          const dt = el.querySelector("durationType")?.textContent?.trim() || "quarter";
+          const dur = durMap[dt] ?? 1;
+          const chordNotes = Array.from(el.querySelectorAll("Note > pitch")).map(n=>midiFromPitch(n.textContent)).filter(v=>v!=null);
+          if (!chordNotes.length){
+            beat += dur; 
+            continue;
+          }
+          const midi = melodyOnly ? Math.max(...chordNotes) : chordNotes[0];
+          notes.push({ midi, timeBeats: beat, durBeats: dur });
+          beat += dur;
+        } else if (el.tagName === "Rest"){
+          const dt = el.querySelector("durationType")?.textContent?.trim() || "quarter";
+          const durMap = { "whole":4, "half":2, "quarter":1, "eighth":0.5, "16th":0.25, "32nd":0.125 };
+          beat += (durMap[dt] ?? 1);
+        }
+      }
+    }
+    return notes;
+  }
+
+  let best = null;
+  for (const st of staffs){
+    const ns = collectStaffNotes(st);
+    if (!ns.length) continue;
+    const avg = ns.reduce((a,n)=>a+n.midi,0)/ns.length;
+    if (!best || avg > best.avg) best = { staff: st, notes: ns, avg };
+  }
+  const notes = best ? best.notes : [];
+
+  return { bpm, timeSig, notes };
+}
+
 
 function stepOctAlterToMidi(step, octave, alter){
   const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[step.toUpperCase()] ?? 0;
@@ -571,6 +703,24 @@ pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
 // ---------- Learn Mode (Mic pitch detection + latch) ----------
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -587,32 +737,32 @@ async function startMic(){
       }
     });
 
-    window.mic.stream = stream;
+    mic.stream = stream;
 
     const A = window.AudioContext || window.webkitAudioContext;
-    window.mic.ctx = new A();
-    await window.mic.ctx.resume?.();
+    mic.ctx = new A();
+    await mic.ctx.resume?.();
 
-    window.mic.src = window.mic.ctx.createMediaStreamSource(stream);
-    window.mic.analyser = window.mic.ctx.createAnalyser();
-    window.mic.analyser.fftSize = 2048;
+    mic.src = mic.ctx.createMediaStreamSource(stream);
+    mic.analyser = mic.ctx.createAnalyser();
+    mic.analyser.fftSize = 2048;
 
-    window.mic.src.connect(window.mic.analyser);
+    mic.src.connect(mic.analyser);
 
-    window.mic.buf = new Float32Array(window.mic.analyser.fftSize);
+    mic.buf = new Float32Array(mic.analyser.fftSize);
 
-    window.mic.latched = false;
-    window.mic.stableMs = 0;
-    window.mic.releaseMs = 0;
-    window.mic.lastFrameTs = performance.now();
-    window.mic.lastAdvanceAt = 0;
+    mic.latched = false;
+    mic.stableMs = 0;
+    mic.releaseMs = 0;
+    mic.lastFrameTs = performance.now();
+    mic.lastAdvanceAt = 0;
 
     micStatusTxt.textContent = "Mic running";
     status("Mic started (Learn)");
     updateTargetReadout();
 
-    if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
-    window.mic.raf = requestAnimationFrame(micLoop);
+    if (mic.raf) cancelAnimationFrame(mic.raf);
+    mic.raf = requestAnimationFrame(micLoop);
   }catch(e){
     console.warn(e);
     micStatusTxt.textContent = "Microphone permission denied or unavailable";
@@ -621,22 +771,17 @@ async function startMic(){
 }
 
 function stopMic(){
-  const mic = window.mic;
-  if (!mic) return;
-
-  if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
-  window.mic.raf = null;
-
-  if (window.mic.stream){
-    window.mic.stream.getTracks().forEach(t => t.stop());
-    window.mic.stream = null;
+  if (mic.raf) cancelAnimationFrame(mic.raf);
+  mic.raf = null;
+  if (mic.stream){
+    mic.stream.getTracks().forEach(t => t.stop());
+    mic.stream = null;
   }
-  if (window.mic.ctx){
-    window.mic.ctx.close?.();
-    window.mic.ctx = null;
+  if (mic.ctx){
+    mic.ctx.close?.();
+    mic.ctx = null;
   }
-
-  if (typeof micStatusTxt !== "undefined" && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
+  micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
@@ -752,67 +897,67 @@ function learnTryAdvance(nowMs){
   const tol = Number(tolCentsEl.value||45) || 45;
   const requireStable = waitModeEl.checked;
 
-  if (window.mic.freq <= 0){
-    window.mic.stableMs = 0;
-    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
+  if (mic.freq <= 0){
+    mic.stableMs = 0;
+    mic.releaseMs += (nowMs - mic.lastFrameTs);
     return;
   }
 
-  const actualMidi = freqToMidi(window.mic.freq);
+  const actualMidi = freqToMidi(mic.freq);
   const delta = centsOff(actualMidi, t.ev.midi);
   const abs = Math.abs(delta);
 
   heardTxt.textContent = `${midiToName(actualMidi)} (~${Math.round(actualMidi*10)/10})`;
-  clarityTxt.textContent = window.mic.clarity.toFixed(2);
+  clarityTxt.textContent = mic.clarity.toFixed(2);
   deltaTxt.textContent = `${(delta>=0?"+":"")}${Math.round(delta)} cents`;
-  levelTxt.textContent = window.mic.rms.toFixed(3);
+  levelTxt.textContent = mic.rms.toFixed(3);
 
-  const match = (abs <= tol) && (window.mic.clarity >= 0.55) && (window.mic.rms >= 0.012);
+  const match = (abs <= tol) && (mic.clarity >= 0.55) && (mic.rms >= 0.012);
 
-  const releaseCond = (!match) || (window.mic.clarity < 0.35) || (window.mic.rms < 0.009);
+  const releaseCond = (!match) || (mic.clarity < 0.35) || (mic.rms < 0.009);
   if (releaseCond){
-    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
+    mic.releaseMs += (nowMs - mic.lastFrameTs);
   } else {
-    window.mic.releaseMs = 0;
+    mic.releaseMs = 0;
   }
 
-  if (window.mic.latched && window.mic.releaseMs >= 140){
-    window.mic.latched = false;
-    window.mic.stableMs = 0;
+  if (mic.latched && mic.releaseMs >= 140){
+    mic.latched = false;
+    mic.stableMs = 0;
   }
 
-  if (window.mic.latched) return;
+  if (mic.latched) return;
 
   if (match){
-    window.mic.stableMs += (nowMs - window.mic.lastFrameTs);
+    mic.stableMs += (nowMs - mic.lastFrameTs);
   } else {
-    window.mic.stableMs = 0;
+    mic.stableMs = 0;
   }
 
   const minGateMs = Math.max(120, scoreBeatToSec(t.ev.durBeat) * 1000 * 0.35);
-  const stableOk = !requireStable || (window.mic.stableMs >= 120);
-  const gateOk = (nowMs - window.mic.lastAdvanceAt) >= minGateMs;
+  const stableOk = !requireStable || (mic.stableMs >= 120);
+  const gateOk = (nowMs - mic.lastAdvanceAt) >= minGateMs;
 
   if (match && stableOk && gateOk){
     playhead.idx = t.idx + 1;      // advance ONE note only
-    window.mic.latched = true;
-    window.mic.lastAdvanceAt = nowMs;
-    window.mic.stableMs = 0;
-    window.mic.releaseMs = 0;
+    mic.latched = true;
+    mic.lastAdvanceAt = nowMs;
+    mic.stableMs = 0;
+    mic.releaseMs = 0;
     updateTargetReadout();
   }
 }
 
 function micLoop(ts){
-  if (!window.mic.analyser) return;
+  if (!mic.analyser) return;
 
-  window.mic.lastFrameTs = ts;
+  mic.lastFrameTs = ts;
 
-  window.mic.analyser.getFloatTimeDomainData(window.mic.buf);
-  const det = detectPitchACF(window.mic.buf, window.mic.ctx.sampleRate);
-  window.mic.freq = det.freq;
-  window.mic.clarity = det.clarity;
-  window.mic.rms = det.rms;
+  mic.analyser.getFloatTimeDomainData(mic.buf);
+  const det = detectPitchACF(mic.buf, mic.ctx.sampleRate);
+  mic.freq = det.freq;
+  mic.clarity = det.clarity;
+  mic.rms = det.rms;
 
   if (mode === "learn"){
     micBtn.style.display = "";
@@ -820,7 +965,7 @@ function micLoop(ts){
     learnTryAdvance(ts);
   }
 
-  window.mic.raf = requestAnimationFrame(micLoop);
+  mic.raf = requestAnimationFrame(micLoop);
 }
 
 // ---------- Rendering ----------
@@ -1150,31 +1295,6 @@ function renderLoop(){
   drawSheet();
   if (showFalling.checked) drawFalling();
   if (score.events.length) updateTargetReadout();
-  // DEBUG_OVERLAY: show basic state on canvases
-  try{
-    const sc = window.score;
-    const fc = window.fallingCanvas;
-    const fctx = window.fallingCtx;
-    if (fc && fctx){
-      fctx.save();
-      fctx.globalAlpha = 0.85;
-      fctx.fillStyle = "#f0f0f0";
-      fctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
-      fctx.fillText(`events:${sc?.events?.length||0} idx:${playhead?.idx||0} mode:${mode||''}`, 8, 14);
-      fctx.restore();
-    }
-    const shc = window.sheetCanvas;
-    const shctx = window.sheetCtx;
-    if (shc && shctx){
-      shctx.save();
-      shctx.globalAlpha = 0.85;
-      shctx.fillStyle = "#f0f0f0";
-      shctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
-      shctx.fillText(`measures:${sc?.measures?.length||0} events:${sc?.events?.length||0}`, 8, 14);
-      shctx.restore();
-    }
-  }catch(e){}
-
   requestAnimationFrame(renderLoop);
 }
 requestAnimationFrame(renderLoop);
