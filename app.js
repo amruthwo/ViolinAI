@@ -259,6 +259,7 @@ async function loadFile(file){
 
   playhead.idx = 0;
   playhead.t0 = 0;
+  sheetRowStartMeasure = 0;
 
   status(`Loaded ${score.events.filter(e=>e.kind==="note").length} notes • ${score.source} • ${score.bpm} bpm`);
   updateTargetReadout();
@@ -502,9 +503,13 @@ const playhead = {
   startedAt: 0
 };
 
+// Sheet paging: start measure index for the top row (advances in 2-measure rows)
+let sheetRowStartMeasure = 0;
+
 function resetPlayhead(){
   playhead.idx = 0;
   playhead.t0 = 0;
+  sheetRowStartMeasure = 0;
   playhead.startedAt = 0;
 }
 
@@ -1036,7 +1041,7 @@ function drawFalling(){
     if (dyBeats < -0.25) fill = "rgba(255,176,32,.55)";
 
     ctx.fillStyle = fill;
-    roundRect(ctx, x, y - rectH/2, w, rectH, 14);
+    roundRect(ctx, x, yTop, w, rectH, 14);
     ctx.fill();
 
     ctx.fillStyle = isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.95)";
@@ -1044,7 +1049,7 @@ function drawFalling(){
     const name = midiToName(ev.midi);
     const fing = violinFingerForMidi(ev.midi);
 
-    const ty = y - 4;
+    const ty = Math.min(yBottom - 8, yTop + 18);
     // Note name left, finger hint right for readability on phones
     ctx.textAlign = "left";
     ctx.fillText(name, x + 12, ty);
@@ -1168,10 +1173,28 @@ function drawSheet(){
   const mLen = beatsPerMeasure(score.timeSig);
   const curMeasureIdx = Math.max(0, Math.min(score.measures.length-1, Math.floor(bNow / mLen)));
 
-  // Build 6-measure window
+  // Row-based paging: 2 measures per row. Only advance the window when the *row* completes.
+  // When not playing, snap the window to the row containing the current measure.
+  if (!(mode==="preview" && audio.isPlaying)) {
+    sheetRowStartMeasure = Math.floor(curMeasureIdx / 2) * 2;
+  } else {
+    // If we've moved beyond the current row, advance in 2-measure steps.
+    const rowEnd = sheetRowStartMeasure + 2;
+    if (curMeasureIdx >= rowEnd) {
+      const deltaRows = Math.floor((curMeasureIdx - sheetRowStartMeasure) / 2);
+      sheetRowStartMeasure = sheetRowStartMeasure + deltaRows * 2;
+    }
+    // If we jumped backwards (seek/stop-start), clamp back.
+    if (curMeasureIdx < sheetRowStartMeasure) {
+      sheetRowStartMeasure = Math.floor(curMeasureIdx / 2) * 2;
+    }
+  }
+  sheetRowStartMeasure = Math.max(0, Math.min(score.measures.length-1, sheetRowStartMeasure));
+
+  // Build 6-measure window starting at the row boundary (3 systems × 2 measures)
   const windowMeasures = [];
   for (let k=0;k<6;k++){
-    windowMeasures.push(score.measures[Math.min(score.measures.length-1, curMeasureIdx + k)]);
+    windowMeasures.push(score.measures[Math.min(score.measures.length-1, sheetRowStartMeasure + k)]);
   }
 
   // Geometry per system
@@ -1321,16 +1344,12 @@ function drawSheet(){
       }
     }
 
-    // Caret only on first system, moving through its two measures
+    // Caret only on first system, moving across the full row (2 measures)
     if (sys === 0 && mode==="preview" && audio.isPlaying){
-      const m0 = rowMeasures[0];
-      const m1 = rowMeasures[1];
-      let caretX = x0;
-      if (bNow < m1.startBeat){
-        caretX = x0 + ((bNow - m0.startBeat) / mLen) * measureW;
-      }else{
-        caretX = x0 + measureW + ((bNow - m1.startBeat) / mLen) * measureW;
-      }
+      const rowStartBeat = sheetRowStartMeasure * mLen;
+      const rowBeats = 2 * mLen;
+      const t = Math.max(0, Math.min(1, (bNow - rowStartBeat) / rowBeats));
+      const caretX = x0 + t * (2 * measureW);
       sctx.strokeStyle = "rgba(91,140,255,.9)";
       sctx.lineWidth = 3;
       sctx.beginPath();
@@ -1367,6 +1386,7 @@ function stopAll(){
   if (audio.schedTimer) clearInterval(audio.schedTimer);
   audio.schedTimer = null;
   resetPlayhead();
+  sheetRowStartMeasure = 0;
   status("Stopped");
   updateTargetAtStop();
 }
