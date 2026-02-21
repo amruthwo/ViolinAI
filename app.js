@@ -139,7 +139,6 @@ let melodyOnly = (localStorage.getItem("va_melodyOnly") || "1") === "1";
     console.warn("Melody toggle init failed:", e);
   }
 })();
-)();
 
 // Settings panel toggle
 settingsBtn.addEventListener("click", () => {
