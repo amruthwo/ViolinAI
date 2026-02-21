@@ -117,6 +117,26 @@ function attachRipple(el){
 }
 document.querySelectorAll(".ripple").forEach(attachRipple);
 
+// --- Mic state must be defined before setMode() can call stopMic() ---
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
+
 // ---------- Core state ----------
 let mode = "preview"; // preview | learn
 let tempoMul = 1.0;
@@ -551,24 +571,6 @@ pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
 // ---------- Learn Mode (Mic pitch detection + latch) ----------
-let mic = {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -619,8 +621,11 @@ async function startMic(){
 }
 
 function stopMic(){
+  if (!mic) return;
+
   if (mic.raf) cancelAnimationFrame(mic.raf);
   mic.raf = null;
+
   if (mic.stream){
     mic.stream.getTracks().forEach(t => t.stop());
     mic.stream = null;
@@ -629,7 +634,8 @@ function stopMic(){
     mic.ctx.close?.();
     mic.ctx = null;
   }
-  micStatusTxt.textContent = "Mic stopped";
+
+  if (micStatusTxt) micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
