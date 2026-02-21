@@ -164,26 +164,6 @@ function attachRipple(el){
 }
 document.querySelectorAll(".ripple").forEach(attachRipple);
 
-// --- Mic state must be defined before setMode() can call stopMic() ---
-var mic = {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
-
 // ---------- Core state ----------
 let mode = "preview"; // preview | learn
 let tempoMul = 1.0;
@@ -473,8 +453,17 @@ function parseMSCX(xmlText){
     if (qps > 0) bpm = qps * 60;
   }
 
-  // Choose the first staff only (treble staff for your use case)
-  const staff = dom.querySelector("Score > Staff") || dom.querySelector("Staff");
+  // Choose treble staff only.
+  // MuseScore 3+: Score > Staff. MuseScore 1.x: Staff elements with id="1"/"2" at top level.
+  let staff = dom.querySelector("Score > Staff") || dom.querySelector("Staff");
+  if (!staff || !staff.querySelectorAll("Measure").length){
+    // MuseScore 1.x layout: <Staff id="1"> ... <Measure> ...</Staff>
+    const staffBlocks = [...dom.querySelectorAll('Staff[id]')];
+    if (staffBlocks.length){
+      // Prefer the first staff (treble in piano scores) unless user later adds a chooser
+      staff = staffBlocks[0];
+    }
+  }
   if (!staff) return { bpm, timeSig, notes: [] };
 
   // Helper: durationType -> beats (quarter=1.0)
@@ -504,7 +493,7 @@ function parseMSCX(xmlText){
 
   for (const meas of measures){
     // If melodyOnly, we prefer voice 1 only (first <voice>). Otherwise merge all voices by a simple sequential pass.
-    const voices = [...meas.querySelectorAll(":scope > voice")];
+    const voices = [...meas.querySelectorAll(':scope > voice')];
     const useVoices = (melodyOnly && voices.length) ? [voices[0]] : (voices.length ? voices : [meas]);
 
     // For multi-voice without explicit ticks, we do a simple sequential interpretation per voice and then merge by time.
@@ -814,7 +803,25 @@ playBtn.addEventListener("click", startPreview);
 pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
-// ---------- Learn Mode \(Mic pitch detection \+ latch\) ----------
+// ---------- Learn Mode (Mic pitch detection + latch) ----------
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -865,12 +872,8 @@ async function startMic(){
 }
 
 function stopMic(){
-  // Safe to call at startup before mic has ever been started
-  if (typeof mic === 'undefined' || !mic) return;
-
   if (mic.raf) cancelAnimationFrame(mic.raf);
   mic.raf = null;
-
   if (mic.stream){
     mic.stream.getTracks().forEach(t => t.stop());
     mic.stream = null;
@@ -879,8 +882,7 @@ function stopMic(){
     mic.ctx.close?.();
     mic.ctx = null;
   }
-
-  if (typeof micStatusTxt !== 'undefined' && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
+  micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
@@ -1099,67 +1101,103 @@ function laneForMidi(m){
   return best;
 }
 
-function drawFalling(){
-  resizeCanvasToDisplaySize(canvas, 360);
-  const W = canvas.width, H = canvas.height;
 
+function drawFalling(){
+  // Falling view with sustain-length rectangles (duration-true) and clearer labels.
+  resizeCanvasToDisplaySize(fallingCanvas, 360);
+  const W = fallingCanvas.width, H = fallingCanvas.height;
   ctx.clearRect(0,0,W,H);
 
-  const pad = 18 * (window.devicePixelRatio||1);
-  const laneW = (W - pad*2) / 4;
-
-  for (let i=0;i<4;i++){
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--lane").trim() || "#121843";
-    ctx.fillRect(pad + i*laneW, 0, laneW-2, H);
+  if (!showFalling.checked){
+    ctx.fillStyle = isLightTheme?.() ? "rgba(16,18,28,.7)" : "rgba(255,255,255,.65)";
+    ctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, sans-serif`;
+    ctx.fillText("Falling hidden", 20*(window.devicePixelRatio||1), 30*(window.devicePixelRatio||1));
+    return;
   }
 
-  const hitY = H * 0.72;
-  ctx.strokeStyle = "rgba(255,255,255,.22)";
-  ctx.lineWidth = 2;
+  const dpr = (window.devicePixelRatio||1);
+  const pad = 14*dpr;
+  const hitY = H - 70*dpr;
+  const laneW = (W - pad*2) / 4;
+
+  // lanes background
+  ctx.fillStyle = isLightTheme?.() ? "rgba(0,0,0,.03)" : "rgba(255,255,255,.03)";
+  for (let i=0;i<4;i++){
+    const x = pad + i*laneW;
+    ctx.fillRect(x, pad, laneW-2*dpr, H-pad*2);
+  }
+
+  // lane labels
+  ctx.fillStyle = isLightTheme?.() ? "rgba(16,18,28,.70)" : "rgba(255,255,255,.70)";
+  ctx.font = `700 ${Math.round(16*dpr)}px system-ui, sans-serif`;
+  ctx.textAlign = "left";
+  const names = ["G","D","A","E"];
+  for (let i=0;i<4;i++){
+    ctx.fillText(names[i], pad + i*laneW + 10*dpr, pad + 24*dpr);
+  }
+
+  // hit line
+  ctx.strokeStyle = isLightTheme?.() ? "rgba(16,18,28,.18)" : "rgba(255,255,255,.20)";
+  ctx.lineWidth = 2*dpr;
   ctx.beginPath();
   ctx.moveTo(pad, hitY);
   ctx.lineTo(W-pad, hitY);
   ctx.stroke();
 
-  const bNow = (mode === "preview" && audio.isPlaying) ? nowPlayBeat() : 0;
+  if (!score.events || !score.events.length) return;
 
-  const noteEvents = score.events.filter(e => e.kind==="note");
+  const bNow = nowPlayBeat?.() ?? 0;
 
-  let idx0 = 0;
-  while (idx0 < noteEvents.length && noteEvents[idx0].startBeat < bNow) idx0++;
-  const showCount = 3;
-  const windowNotes = noteEvents.slice(Math.max(0, idx0-1), Math.max(0, idx0-1) + showCount + 1);
+  // pixels per beat controls scroll speed; choose based on height for phone readability
+  const visibleBeats = 6.0; // how far ahead shown
+  const pxPerBeat = (hitY - (pad + 40*dpr)) / visibleBeats;
 
-  for (const ev of windowNotes){
-    const lane = laneForMidi(ev.midi);
-    const laneIdx = lanes.findIndex(x=>x.name===lane.name);
-    const x = pad + laneIdx*laneW + 8;
-    const w = laneW - 16;
+  // choose events in window
+  const windowStart = bNow - 1.5; 
+  const windowEnd = bNow + visibleBeats;
+  const evs = score.events.filter(ev => ev.type==="note" && ev.endBeat >= windowStart && ev.startBeat <= windowEnd);
 
-    const dyBeats = ev.startBeat - bNow;
-    const y = hitY - dyBeats * (H * 0.22);
-    const rectH = Math.max(44, Math.min(72, ev.durBeat * 60));
+  // draw notes (fainter for future)
+  for (const ev of evs){
+    const fing = guessStringAndFinger(ev.midi);
+    const lane = ({G:0,D:1,A:2,E:3})[fing.string] ?? 0;
+    const x = pad + lane*laneW + 8*dpr;
+    const w = laneW - 16*dpr;
 
-    let fill = "rgba(200,200,200,.28)";
-    if (Math.abs(dyBeats) < 0.12) fill = "rgba(91,140,255,.80)";
-    if (dyBeats < -0.25) fill = "rgba(255,176,32,.55)";
+    // sustain-true rect: bottom hits play line at startBeat
+    const yBottom = hitY - (ev.startBeat - bNow)*pxPerBeat;
+    const rectH = Math.max(44*dpr, ev.durBeat * pxPerBeat); // minimum for legibility
+    const yTop = yBottom - rectH;
 
-    ctx.fillStyle = fill;
-    roundRect(ctx, x, y - rectH/2, w, rectH, 14);
-    ctx.fill();
+    if (yBottom < pad || yTop > H-pad) continue;
 
-    ctx.fillStyle = "rgba(255,255,255,.95)";
-    ctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    const isNow = Math.abs(ev.startBeat - bNow) < 0.08;
+    const alpha = isNow ? 1.0 : (ev.startBeat >= bNow ? 0.70 : 0.28);
+
+    // rect
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = isNow ? "rgba(91,140,255,.95)" : "rgba(160,170,190,.45)";
+    ctx.strokeStyle = isLightTheme?.() ? "rgba(16,18,28,.10)" : "rgba(255,255,255,.10)";
+    const r = 12*dpr;
+    roundRect(ctx, x, yTop, w, rectH, r, true, true);
+
+    // labels (note left, finger right)
     const name = midiToName(ev.midi);
-    const fing = violinFingerForMidi(ev.midi);
+    ctx.globalAlpha = Math.min(1, alpha + 0.22);
+    ctx.fillStyle = isLightTheme?.() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.95)";
+    ctx.font = `800 ${Math.round(16*dpr)}px system-ui, sans-serif`;
+    ctx.textAlign = "left";
+    ctx.fillText(name, x + 12*dpr, yTop + 24*dpr);
 
-    const ty = y - 4;
-    ctx.fillText(name, x + 12, ty);
-    ctx.globalAlpha = 0.92;
-    ctx.fillText(`${fing.string} ${fing.finger}`, x + 12, ty + 18);
-    ctx.globalAlpha = 1;
+    ctx.font = `700 ${Math.round(14*dpr)}px system-ui, sans-serif`;
+    ctx.textAlign = "right";
+    ctx.fillText(`${fing.string} ${fing.finger}`, x + w - 12*dpr, yTop + 24*dpr);
+
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1.0;
   }
 }
+
 
 function roundRect(c,x,y,w,h,r){
   c.beginPath();
@@ -1215,179 +1253,190 @@ function drawTrebleClef(x, y){
   sctx.restore();
 }
 
+
 function drawSheet(){
-  resizeCanvasToDisplaySize(sheetCanvas, 260);
+  // 3 systems (rows), 2 measures per row. Caret moves across full top row; paging happens per row.
+  resizeCanvasToDisplaySize(sheetCanvas, 340);
   const W = sheetCanvas.width, H = sheetCanvas.height;
   sctx.clearRect(0,0,W,H);
 
-  const show = showSheet.checked;
-  if (!show){
-    sctx.fillStyle = "rgba(255,255,255,.6)";
-    sctx.fillText("Sheet hidden", 20, 30);
+  if (!showSheet.checked){
+    sctx.fillStyle = noteInk?.() || "rgba(255,255,255,.6)";
+    sctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, sans-serif`;
+    sctx.fillText("Sheet hidden", 20*(window.devicePixelRatio||1), 30*(window.devicePixelRatio||1));
     return;
   }
 
-  const padX = 18 * (window.devicePixelRatio||1);
-  const padY = 18 * (window.devicePixelRatio||1);
-  const lineGap = 14 * (window.devicePixelRatio||1);
-  const staffTopY = padY + 18*(window.devicePixelRatio||1);
-  const staffBottomY = staffTopY + 4*lineGap;
+  const dpr = (window.devicePixelRatio||1);
+  const padX = 18*dpr, padY = 16*dpr;
+  const lineGap = 14*dpr;
+  const staffH = 4*lineGap;
+  const systemGap = (staffH + 42*dpr);
 
-  sctx.strokeStyle = "rgba(255,255,255,.20)";
-  sctx.lineWidth = 2;
-  for (let i=0;i<5;i++){
-    const y = staffTopY + i*lineGap;
-    sctx.beginPath();
-    sctx.moveTo(padX, y);
-    sctx.lineTo(W-padX, y);
-    sctx.stroke();
-  }
-
-  drawTrebleClef(padX + 2, staffBottomY + lineGap*0.25);
-
-  if (!score.measures.length){
-    sctx.fillStyle = "rgba(255,255,255,.7)";
-    sctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui`;
-    sctx.fillText("Load a MIDI or MusicXML file to see notes.", padX + 52*(window.devicePixelRatio||1), staffTopY + 2*lineGap);
+  const measures = score.measures || [];
+  if (!measures.length){
+    sctx.fillStyle = noteInk?.() || "rgba(255,255,255,.7)";
+    sctx.font = `${Math.round(14*dpr)}px system-ui, sans-serif`;
+    sctx.fillText("Load MIDI / MusicXML / MSCZ to see notation.", padX, padY+20*dpr);
     return;
   }
 
-  const bNow = (mode==="preview" && audio.isPlaying) ? nowPlayBeat() : 0;
-  const mLen = beatsPerMeasure(score.timeSig);
-  const curMeasureIdx = Math.max(0, Math.min(score.measures.length-1, Math.floor(bNow / mLen)));
-  const m0 = score.measures[curMeasureIdx];
-  const m1 = score.measures[Math.min(score.measures.length-1, curMeasureIdx+1)];
+  const measuresPerRow = 2;
+  const rows = 3;
+  const rowW = Math.max(1, W - padX*2);
+  const measureW = rowW / measuresPerRow;
 
-  const windowMeasures = [m0, m1];
-
-  const clefW = 52*(window.devicePixelRatio||1);
-  const usableW = (W - padX*2 - clefW);
-  const measureW = usableW / 2;
-  const x0 = padX + clefW;
-
-  sctx.strokeStyle = "rgba(255,255,255,.25)";
-  sctx.lineWidth = 2;
-  for (let i=0;i<3;i++){
-    const x = x0 + i*measureW;
-    sctx.beginPath();
-    sctx.moveTo(x, staffTopY);
-    sctx.lineTo(x, staffBottomY);
-    sctx.stroke();
+  // Determine current measure index from preview playback position
+  const bNow = nowPlayBeat?.() ?? 0;
+  let curIdx = 0;
+  for (let i=0;i<measures.length;i++){
+    const m = measures[i];
+    const start = m.startBeat, end = m.endBeat;
+    if (bNow >= start && bNow < end){ curIdx = i; break; }
+    if (bNow >= end) curIdx = i;
   }
+  const rowStartIdx = Math.floor(curIdx / measuresPerRow) * measuresPerRow;
 
-  for (let mi=0; mi<2; mi++){
-    const m = windowMeasures[mi];
-    const baseX = x0 + mi*measureW;
-    const beatSpan = mLen;
+  // staff line style
+  sctx.lineWidth = 1*dpr;
+  sctx.strokeStyle = staffInk?.() || (isLightTheme?.() ? "rgba(16,18,28,.25)" : "rgba(255,255,255,.20)");
 
-    const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
-    const xForBeat = (beat) => baseX + ( (beat - m.startBeat) / beatSpan ) * (measureW - 14*(window.devicePixelRatio||1)) + 8*(window.devicePixelRatio||1);
+  // draw each system
+  for (let r=0;r<rows;r++){
+    const sysTopY = padY + r*systemGap;
+    const staffTopY = sysTopY + 28*dpr;
+    const staffBottomY = staffTopY + staffH;
 
-    for (const ev of evs){
-      const x = xForBeat(ev.startBeat);
-
-      if (ev.kind === "rest"){
-        sctx.fillStyle = "rgba(255,255,255,.75)";
-        sctx.font = `${Math.round(18*(window.devicePixelRatio||1))}px serif`;
-        const k = durKind(ev.durBeat);
-        const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
-        sctx.fillText(glyph, x, staffTopY + 3.1*lineGap);
-        continue;
-      }
-
-      const y = staffYForMidi(ev.midi, staffBottomY, lineGap);
-
-      const kind = durKind(ev.durBeat);
-      const filled = !(kind==="whole" || kind==="half");
-      const headW = 14*(window.devicePixelRatio||1);
-      const headH = 10*(window.devicePixelRatio||1);
-
-      sctx.save();
-      sctx.translate(x, y);
-      sctx.rotate(-0.35);
-      sctx.strokeStyle = "rgba(255,255,255,.92)";
-      sctx.lineWidth = 2;
-      sctx.fillStyle = filled ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.06)";
+    // staff lines
+    for (let k=0;k<5;k++){
+      const y = staffTopY + k*lineGap;
       sctx.beginPath();
-      sctx.ellipse(0, 0, headW/2, headH/2, 0, 0, Math.PI*2);
-      sctx.fill();
+      sctx.moveTo(padX, y);
+      sctx.lineTo(W-padX, y);
       sctx.stroke();
-      sctx.restore();
+    }
 
-      const st = midiToStepOct(ev.midi);
-      if (st.accidental){
-        sctx.fillStyle = "rgba(255,255,255,.86)";
-        sctx.font = `${Math.round(16*(window.devicePixelRatio||1))}px system-ui`;
-        sctx.fillText(st.accidental, x - 18*(window.devicePixelRatio||1), y + 6*(window.devicePixelRatio||1));
+    // treble clef on each system
+    if (typeof drawTrebleClef === "function"){
+      drawTrebleClef(padX + 10*dpr, staffTopY + 2*lineGap);
+    } else {
+      sctx.save();
+      sctx.fillStyle = noteInk?.() || "rgba(255,255,255,.9)";
+      sctx.font = `${Math.round(38*dpr)}px serif`;
+      sctx.textBaseline = "middle";
+      sctx.fillText("𝄞", padX + 8*dpr, staffTopY + 2*lineGap);
+      sctx.restore();
+    }
+
+    // measures to render in this row
+    const baseIdx = rowStartIdx + r*measuresPerRow;
+    for (let mi=0; mi<measuresPerRow; mi++){
+      const idx = baseIdx + mi;
+      if (idx >= measures.length) continue;
+      const m = measures[idx];
+      const x0 = padX + mi*measureW;
+
+      // bar line at measure start (except first)
+      if (mi>0){
+        sctx.beginPath();
+        sctx.moveTo(x0, staffTopY);
+        sctx.lineTo(x0, staffBottomY);
+        sctx.stroke();
       }
 
-      if (kind !== "whole"){
-        const stemUp = (y > staffTopY + 2*lineGap);
-        sctx.strokeStyle = "rgba(255,255,255,.92)";
-        sctx.lineWidth = 2;
+      // Render events in this measure
+      const evs = m.events || [];
+      for (const ev of evs){
+        if (ev.type !== "note") continue;
 
-        const stemX = x + (stemUp ? (headW/2) : -(headW/2));
-        const stemLen = 38*(window.devicePixelRatio||1);
-        const y1 = y;
-        const y2 = stemUp ? (y - stemLen) : (y + stemLen);
+        const t = (ev.startBeat - m.startBeat) / (m.endBeat - m.startBeat);
+        const x = x0 + Math.max(0, Math.min(0.999, t)) * measureW + 26*dpr;
+
+        // map midi to staff position (very simplified)
+        const midi = ev.midi;
+        const semisFromE4 = midi - 64; // E4 is bottom line in treble-ish mapping
+        const y = staffBottomY - semisFromE4 * (lineGap/2);
+
+        // notehead + stem (reuse existing drawing style)
+        const filled = (ev.durBeat ?? 1) <= 1.0;
+        const rx = 7*dpr, ry = 5*dpr;
+
+        sctx.save();
+        sctx.strokeStyle = noteInk?.() || "rgba(255,255,255,.92)";
+        sctx.fillStyle = filled ? (noteFillInk?.() || sctx.strokeStyle) : (noteHollowFill?.() || "rgba(255,255,255,.06)");
+        sctx.lineWidth = 1.6*dpr;
 
         sctx.beginPath();
-        sctx.moveTo(stemX, y1);
-        sctx.lineTo(stemX, y2);
+        sctx.ellipse(x, y, rx, ry, -0.35, 0, Math.PI*2);
+        sctx.fill();
         sctx.stroke();
 
-        if (kind === "eighth" || kind === "sixteenth"){
-          const dir = stemUp ? -1 : 1;
-          const fx = stemX;
-          const fy = y2;
+        // stem
+        sctx.beginPath();
+        sctx.moveTo(x + rx, y);
+        sctx.lineTo(x + rx, y - 30*dpr);
+        sctx.stroke();
 
+        // simple flag for 1/8 and shorter
+        if ((ev.durBeat ?? 1) <= 0.5){
           sctx.beginPath();
-          sctx.moveTo(fx, fy);
-          sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy + 6*dir, fx + 6*(window.devicePixelRatio||1), fy + 14*dir);
+          sctx.moveTo(x + rx, y - 30*dpr);
+          sctx.quadraticCurveTo(x + rx + 10*dpr, y - 22*dpr, x + rx, y - 14*dpr);
           sctx.stroke();
+        }
+        if ((ev.durBeat ?? 1) <= 0.25){
+          sctx.beginPath();
+          sctx.moveTo(x + rx, y - 22*dpr);
+          sctx.quadraticCurveTo(x + rx + 10*dpr, y - 14*dpr, x + rx, y - 6*dpr);
+          sctx.stroke();
+        }
 
-          if (kind === "sixteenth"){
-            const fy2 = fy + 10*dir;
+        // ledger lines
+        const yMin = staffTopY, yMax = staffBottomY;
+        if (y < yMin){
+          for (let ly = yMin - lineGap; ly >= y; ly -= lineGap){
             sctx.beginPath();
-            sctx.moveTo(fx, fy2);
-            sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy2 + 6*dir, fx + 6*(window.devicePixelRatio||1), fy2 + 14*dir);
+            sctx.moveTo(x - 10*dpr, ly);
+            sctx.lineTo(x + 10*dpr, ly);
+            sctx.stroke();
+          }
+        } else if (y > yMax){
+          for (let ly = yMax + lineGap; ly <= y; ly += lineGap){
+            sctx.beginPath();
+            sctx.moveTo(x - 10*dpr, ly);
+            sctx.lineTo(x + 10*dpr, ly);
             sctx.stroke();
           }
         }
-      }
 
-      const yMin = staffTopY;
-      const yMax = staffBottomY;
-      sctx.strokeStyle = "rgba(255,255,255,.20)";
-      sctx.lineWidth = 2;
-      if (y < yMin){
-        for (let ly = yMin - lineGap; ly >= y; ly -= lineGap){
-          sctx.beginPath();
-          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
-          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
-          sctx.stroke();
-        }
-      } else if (y > yMax){
-        for (let ly = yMax + lineGap; ly <= y; ly += lineGap){
-          sctx.beginPath();
-          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
-          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
-          sctx.stroke();
-        }
+        sctx.restore();
       }
     }
   }
 
+  // Caret across the entire TOP row width (two measures)
   if (mode==="preview" && audio.isPlaying){
-    const xCaret = x0 + ( (bNow - m0.startBeat) / mLen ) * measureW;
+    const topStartIdx = rowStartIdx;
+    const mA = measures[topStartIdx];
+    const mB = measures[topStartIdx+1] || mA;
+    const rowStartBeat = mA.startBeat;
+    const rowEndBeat = mB.endBeat;
+    const rowLen = Math.max(1e-6, rowEndBeat - rowStartBeat);
+    const tRow = Math.max(0, Math.min(1, (bNow - rowStartBeat) / rowLen));
+    const xCaret = padX + tRow * rowW;
+
+    const staffTopY = padY + 28*dpr;
+    const staffBottomY = staffTopY + staffH;
+
     sctx.strokeStyle = "rgba(91,140,255,.9)";
-    sctx.lineWidth = 3;
+    sctx.lineWidth = 3*dpr;
     sctx.beginPath();
-    sctx.moveTo(xCaret, staffTopY - 10*(window.devicePixelRatio||1));
-    sctx.lineTo(xCaret, staffBottomY + 10*(window.devicePixelRatio||1));
+    sctx.moveTo(xCaret, staffTopY - 10*dpr);
+    sctx.lineTo(xCaret, staffBottomY + 10*dpr);
     sctx.stroke();
   }
 }
+
 
 // ---------- Animation loop ----------
 function renderLoop(){
