@@ -1,5 +1,26 @@
 /* app.js — ViolinAI v15 */
 
+
+// --- Mic state (window-scoped to avoid module TDZ issues) ---
+window.mic = window.mic || {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
+
 const $ = (id) => document.getElementById(id);
 
 
@@ -16,7 +37,7 @@ const $ = (id) => document.getElementById(id);
     }
     if (!window.sheetCanvas){
       window.sheetCanvas =
-        document.getElementById("sheetCanvas") ||
+        document.getElementById("window.sheetCanvas") ||
         document.getElementById("sheet") ||
         document.querySelector("canvas#sheet");
     }
@@ -70,8 +91,8 @@ const statusEl = $("status");
 const canvas = $("canvas");
 const ctx = canvas.getContext("2d");
 
-const sheetCanvas = $("sheetCanvas");
-const sctx = sheetCanvas.getContext("2d");
+const sheetCanvas = $("window.sheetCanvas");
+const sctx = window.sheetCanvas.getContext("2d");
 
 // Register SW
 (async () => {
@@ -851,24 +872,6 @@ pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
 // ---------- Learn Mode (Mic pitch detection + latch) ----------
-let mic = {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -885,32 +888,32 @@ async function startMic(){
       }
     });
 
-    mic.stream = stream;
+    window.mic.stream = stream;
 
     const A = window.AudioContext || window.webkitAudioContext;
-    mic.ctx = new A();
-    await mic.ctx.resume?.();
+    window.mic.ctx = new A();
+    await window.mic.ctx.resume?.();
 
-    mic.src = mic.ctx.createMediaStreamSource(stream);
-    mic.analyser = mic.ctx.createAnalyser();
-    mic.analyser.fftSize = 2048;
+    window.mic.src = window.mic.ctx.createMediaStreamSource(stream);
+    window.mic.analyser = window.mic.ctx.createAnalyser();
+    window.mic.analyser.fftSize = 2048;
 
-    mic.src.connect(mic.analyser);
+    window.mic.src.connect(window.mic.analyser);
 
-    mic.buf = new Float32Array(mic.analyser.fftSize);
+    window.mic.buf = new Float32Array(window.mic.analyser.fftSize);
 
-    mic.latched = false;
-    mic.stableMs = 0;
-    mic.releaseMs = 0;
-    mic.lastFrameTs = performance.now();
-    mic.lastAdvanceAt = 0;
+    window.mic.latched = false;
+    window.mic.stableMs = 0;
+    window.mic.releaseMs = 0;
+    window.mic.lastFrameTs = performance.now();
+    window.mic.lastAdvanceAt = 0;
 
     micStatusTxt.textContent = "Mic running";
     status("Mic started (Learn)");
     updateTargetReadout();
 
-    if (mic.raf) cancelAnimationFrame(mic.raf);
-    mic.raf = requestAnimationFrame(micLoop);
+    if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
+    window.mic.raf = requestAnimationFrame(micLoop);
   }catch(e){
     console.warn(e);
     micStatusTxt.textContent = "Microphone permission denied or unavailable";
@@ -919,17 +922,22 @@ async function startMic(){
 }
 
 function stopMic(){
-  if (mic.raf) cancelAnimationFrame(mic.raf);
-  mic.raf = null;
-  if (mic.stream){
-    mic.stream.getTracks().forEach(t => t.stop());
-    mic.stream = null;
+  const mic = window.mic;
+  if (!mic) return;
+
+  if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
+  window.mic.raf = null;
+
+  if (window.mic.stream){
+    window.mic.stream.getTracks().forEach(t => t.stop());
+    window.mic.stream = null;
   }
-  if (mic.ctx){
-    mic.ctx.close?.();
-    mic.ctx = null;
+  if (window.mic.ctx){
+    window.mic.ctx.close?.();
+    window.mic.ctx = null;
   }
-  micStatusTxt.textContent = "Mic stopped";
+
+  if (typeof micStatusTxt !== "undefined" && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
@@ -1045,67 +1053,67 @@ function learnTryAdvance(nowMs){
   const tol = Number(tolCentsEl.value||45) || 45;
   const requireStable = waitModeEl.checked;
 
-  if (mic.freq <= 0){
-    mic.stableMs = 0;
-    mic.releaseMs += (nowMs - mic.lastFrameTs);
+  if (window.mic.freq <= 0){
+    window.mic.stableMs = 0;
+    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
     return;
   }
 
-  const actualMidi = freqToMidi(mic.freq);
+  const actualMidi = freqToMidi(window.mic.freq);
   const delta = centsOff(actualMidi, t.ev.midi);
   const abs = Math.abs(delta);
 
   heardTxt.textContent = `${midiToName(actualMidi)} (~${Math.round(actualMidi*10)/10})`;
-  clarityTxt.textContent = mic.clarity.toFixed(2);
+  clarityTxt.textContent = window.mic.clarity.toFixed(2);
   deltaTxt.textContent = `${(delta>=0?"+":"")}${Math.round(delta)} cents`;
-  levelTxt.textContent = mic.rms.toFixed(3);
+  levelTxt.textContent = window.mic.rms.toFixed(3);
 
-  const match = (abs <= tol) && (mic.clarity >= 0.55) && (mic.rms >= 0.012);
+  const match = (abs <= tol) && (window.mic.clarity >= 0.55) && (window.mic.rms >= 0.012);
 
-  const releaseCond = (!match) || (mic.clarity < 0.35) || (mic.rms < 0.009);
+  const releaseCond = (!match) || (window.mic.clarity < 0.35) || (window.mic.rms < 0.009);
   if (releaseCond){
-    mic.releaseMs += (nowMs - mic.lastFrameTs);
+    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
   } else {
-    mic.releaseMs = 0;
+    window.mic.releaseMs = 0;
   }
 
-  if (mic.latched && mic.releaseMs >= 140){
-    mic.latched = false;
-    mic.stableMs = 0;
+  if (window.mic.latched && window.mic.releaseMs >= 140){
+    window.mic.latched = false;
+    window.mic.stableMs = 0;
   }
 
-  if (mic.latched) return;
+  if (window.mic.latched) return;
 
   if (match){
-    mic.stableMs += (nowMs - mic.lastFrameTs);
+    window.mic.stableMs += (nowMs - window.mic.lastFrameTs);
   } else {
-    mic.stableMs = 0;
+    window.mic.stableMs = 0;
   }
 
   const minGateMs = Math.max(120, scoreBeatToSec(t.ev.durBeat) * 1000 * 0.35);
-  const stableOk = !requireStable || (mic.stableMs >= 120);
-  const gateOk = (nowMs - mic.lastAdvanceAt) >= minGateMs;
+  const stableOk = !requireStable || (window.mic.stableMs >= 120);
+  const gateOk = (nowMs - window.mic.lastAdvanceAt) >= minGateMs;
 
   if (match && stableOk && gateOk){
     playhead.idx = t.idx + 1;      // advance ONE note only
-    mic.latched = true;
-    mic.lastAdvanceAt = nowMs;
-    mic.stableMs = 0;
-    mic.releaseMs = 0;
+    window.mic.latched = true;
+    window.mic.lastAdvanceAt = nowMs;
+    window.mic.stableMs = 0;
+    window.mic.releaseMs = 0;
     updateTargetReadout();
   }
 }
 
 function micLoop(ts){
-  if (!mic.analyser) return;
+  if (!window.mic.analyser) return;
 
-  mic.lastFrameTs = ts;
+  window.mic.lastFrameTs = ts;
 
-  mic.analyser.getFloatTimeDomainData(mic.buf);
-  const det = detectPitchACF(mic.buf, mic.ctx.sampleRate);
-  mic.freq = det.freq;
-  mic.clarity = det.clarity;
-  mic.rms = det.rms;
+  window.mic.analyser.getFloatTimeDomainData(window.mic.buf);
+  const det = detectPitchACF(window.mic.buf, window.mic.ctx.sampleRate);
+  window.mic.freq = det.freq;
+  window.mic.clarity = det.clarity;
+  window.mic.rms = det.rms;
 
   if (mode === "learn"){
     micBtn.style.display = "";
@@ -1113,7 +1121,7 @@ function micLoop(ts){
     learnTryAdvance(ts);
   }
 
-  mic.raf = requestAnimationFrame(micLoop);
+  window.mic.raf = requestAnimationFrame(micLoop);
 }
 
 // ---------- Rendering ----------
@@ -1151,6 +1159,7 @@ function laneForMidi(m){
 
 function drawFalling(){
   const canvas = window.fallingCanvas;
+  if (!canvas || !fallingCtx) return;
   if (!canvas || !fallingCtx) return;
   // Falling view with sustain-length rectangles (duration-true) and clearer labels.
   resizeCanvasToDisplaySize(canvas, 360);
@@ -1305,8 +1314,8 @@ function drawTrebleClef(x, y){
 
 function drawSheet(){
   // 3 systems (rows), 2 measures per row. Caret moves across full top row; paging happens per row.
-  resizeCanvasToDisplaySize(sheetCanvas, 340);
-  const W = sheetCanvas.width, H = sheetCanvas.height;
+  resizeCanvasToDisplaySize(window.sheetCanvas, 340);
+  const W = window.sheetCanvas.width, H = window.sheetCanvas.height;
   sctx.clearRect(0,0,W,H);
 
   if (!showSheet.checked){
