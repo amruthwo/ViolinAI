@@ -1,12 +1,23 @@
 
-// Aliases for canvas elements (some older code uses fallingCanvas/sheetCanvas names)
-if (typeof fallingCanvas === "undefined") {
-  // Prefer existing IDs used in index.html; fall back gracefully.
-  window.fallingCanvas = document.getElementById("fallingCanvas") || document.getElementById("fallCanvas") || document.getElementById("falling") || document.querySelector("canvas#falling") || document.querySelector("canvas[data-role='falling']");
-}
-if (typeof sheetCanvas === "undefined") {
-  window.sheetCanvas = document.getElementById("sheetCanvas") || document.getElementById("sheet") || document.querySelector("canvas#sheet");
-}
+// Safe canvas aliases (avoid TDZ by only touching window.*)
+(function ensureCanvasAliases(){
+  try{
+    if (!window.fallingCanvas){
+      window.fallingCanvas =
+        document.getElementById("fallingCanvas") ||
+        document.getElementById("fallCanvas") ||
+        document.getElementById("falling") ||
+        document.querySelector("canvas#falling") ||
+        document.querySelector("canvas[data-role='falling']");
+    }
+    if (!window.sheetCanvas){
+      window.sheetCanvas =
+        document.getElementById("sheetCanvas") ||
+        document.getElementById("sheet") ||
+        document.querySelector("canvas#sheet");
+    }
+  }catch(e){ /* ignore */ }
+})();
 
 /* app.js — ViolinAI v15 */
 
@@ -61,7 +72,7 @@ const canvas = $("canvas");
 const ctx = canvas.getContext("2d");
 
 const sheetCanvas = $("sheetCanvas");
-const sctx = sheetCanvas.getContext("2d");
+const sctx = window.sheetCanvas.getContext("2d");
 
 // Register SW
 (async () => {
@@ -1142,7 +1153,7 @@ function laneForMidi(m){
 function drawFalling(){
   // Falling view with sustain-length rectangles (duration-true) and clearer labels.
   resizeCanvasToDisplaySize(fallingCanvas, 360);
-  const W = canvas.width, H = canvas.height;
+  const W = window.fallingCanvas.width, H = window.fallingCanvas.height;
   ctx.clearRect(0,0,W,H);
 
   if (!showFalling.checked){
@@ -1294,7 +1305,7 @@ function drawTrebleClef(x, y){
 function drawSheet(){
   // 3 systems (rows), 2 measures per row. Caret moves across full top row; paging happens per row.
   resizeCanvasToDisplaySize(sheetCanvas, 340);
-  const W = sheetCanvas.width, H = sheetCanvas.height;
+  const W = window.sheetCanvas.width, H = window.sheetCanvas.height;
   sctx.clearRect(0,0,W,H);
 
   if (!showSheet.checked){
