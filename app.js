@@ -283,9 +283,6 @@ async function loadFile(file){
 
   // Apply melody-only filter (highest note at each start time) for all formats if enabled
   parsed.notes = applyMelodyOnlyFilter(parsed.notes);
-(buf);
-    score.source = "MIDI";
-  }
 
   score.bpm = parsed.bpm || 120;
   score.timeSig = parsed.timeSig || { num: 4, den: 4 };
@@ -404,7 +401,14 @@ function parseMusicXML(xmlText){
   return { bpm, timeSig, notes };
 }
 
-function stepOctAlterToMidi
+function stepOctAlterToMidi(step, oct, alter){
+  // step: A-G, oct: integer, alter: -2..2 (semitones)
+  const base = {C:0, D:2, E:4, F:5, G:7, A:9, B:11}[String(step||'C').toUpperCase()] ?? 0;
+  const o = Number(oct);
+  const a = Number(alter)||0;
+  // MIDI: C4 = 60. Formula: (oct+1)*12 + base + alter
+  return (o + 1) * 12 + base + a;
+}
 // ---------- MuseScore (.mscz/.mscx) parsing (best-effort) ----------
 async function parseMSCZ(arrayBuffer){
   // .mscz is a zip container. We dynamically import JSZip only when needed.
@@ -556,10 +560,6 @@ function parseMSCX(xmlText){
 
   notes.sort((a,b) => a.timeSec - b.timeSec || a.midi - b.midi);
   return { bpm, timeSig, notes };
-}
-(step, octave, alter){
-  const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[step.toUpperCase()] ?? 0;
-  return (octave + 1) * 12 + base + alter;
 }
 
 // ---------- Build practice score (quantize + rests + measure structure) ----------
