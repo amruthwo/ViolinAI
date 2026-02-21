@@ -1,9 +1,9 @@
-/* sw.js — v15.0.1 */
-const CACHE = "violinai-v15.1.0";
+/* sw.js — v15.5.3 */
+const CACHE = "violinai-v15.5.3";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=15.1",
+  "./app.js?v=15.5.3",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -34,21 +34,21 @@ self.addEventListener("fetch", (event) => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
 
-    // IMPORTANT: do NOT ignore querystring for versioned assets
+    // Do NOT ignore query strings for versioned assets like app.js?v=...
     const isVersionedAsset =
       url.pathname.endsWith("/app.js") ||
-      url.pathname.endsWith("/style.css") ||
+      url.pathname.endsWith("/styles.css") ||
       url.pathname.endsWith("/manifest.webmanifest") ||
       url.pathname.includes("/icons/");
 
     const cached = await cache.match(req, { ignoreSearch: !isVersionedAsset });
     if (cached) return cached;
 
-    try{
+    try {
       const res = await fetch(req);
       if (req.method === "GET" && res.ok) cache.put(req, res.clone());
       return res;
-    }catch(e){
+    } catch (e) {
       if (req.mode === "navigate") {
         const fallback = await cache.match("./index.html", { ignoreSearch: true });
         if (fallback) return fallback;
