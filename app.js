@@ -1166,6 +1166,8 @@ function drawFalling(){
   const ctx = window.fallingCtx || canvas.getContext('2d');
   window.fallingCtx = ctx;
   if (!ctx) return;
+  const W = canvas.width;
+  const H = canvas.height;
   ctx.clearRect(0,0,W,H);
 
   if (!showFalling.checked){
