@@ -1,5 +1,5 @@
 /* sw.js — v15.5.3 */
-const CACHE = "violinai-v15.6";
+const CACHE = "violinai-v15.0";
 const ASSETS = [
   "./",
   "./index.html",
