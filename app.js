@@ -91,7 +91,55 @@ function persistSettings(){
   if (d) document.documentElement.dataset.design = d;
   designSelect.value = document.documentElement.dataset.design || "auto";
   applyThemeButtonLabel();
+}
+// --- Melody-only mode (helps with chords / multi-voice scores) ---
+let melodyOnly = (localStorage.getItem("va_melodyOnly") || "1") === "1";
+
+// Inject a settings toggle if the HTML doesn't already include it
+(function ensureMelodyToggle(){
+  try{
+    const panel = document.getElementById("settingsPanel");
+    if (!panel) return;
+
+    let cb = document.getElementById("melodyOnly");
+    if (!cb){
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.justifyContent = "space-between";
+      row.style.gap = "10px";
+
+      const label = document.createElement("label");
+      label.htmlFor = "melodyOnly";
+      label.textContent = "Melody only (ignore chords)";
+
+      cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "melodyOnly";
+      cb.checked = melodyOnly;
+
+      row.appendChild(label);
+      row.appendChild(cb);
+
+      // Place it near the top of settings, after theme/design if possible.
+      const firstFieldset = panel.querySelector("fieldset") || panel.firstElementChild;
+      if (firstFieldset) firstFieldset.appendChild(row);
+      else panel.appendChild(row);
+    }
+    cb.addEventListener("change", () => {
+      melodyOnly = cb.checked;
+      localStorage.setItem("va_melodyOnly", melodyOnly ? "1" : "0");
+      // If a score is loaded, rebuild events quickly from rawNotes if we have them
+      if (score._rawNotes){
+        rebuildFromRawNotes();
+      }
+    });
+  }catch(e){
+    console.warn("Melody toggle init failed:", e);
+  }
 })();
+)();
 
 // Settings panel toggle
 settingsBtn.addEventListener("click", () => {
@@ -116,26 +164,6 @@ function attachRipple(el){
   });
 }
 document.querySelectorAll(".ripple").forEach(attachRipple);
-
-// --- Mic state must be defined before setMode() can call stopMic() ---
-var mic = {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
 
 // ---------- Core state ----------
 let mode = "preview"; // preview | learn
@@ -242,7 +270,10 @@ async function loadFile(file){
   const ext = (file.name.split(".").pop()||"").toLowerCase();
 
   let parsed;
-  if (ext === "xml" || ext === "musicxml") {
+  if (ext === "mscz") {
+    parsed = await parseMSCZ(buf);
+    score.source = "MSCZ";
+  } else if (ext === "xml" || ext === "musicxml") {
     const text = new TextDecoder().decode(buf);
     parsed = parseMusicXML(text);
     score.source = "MusicXML";
@@ -251,15 +282,21 @@ async function loadFile(file){
     score.source = "MIDI";
   }
 
+  // Apply melody-only filter (highest note at each start time) for all formats if enabled
+  parsed.notes = applyMelodyOnlyFilter(parsed.notes);
+(buf);
+    score.source = "MIDI";
+  }
+
   score.bpm = parsed.bpm || 120;
   score.timeSig = parsed.timeSig || { num: 4, den: 4 };
+  score._rawNotes = parsed.notes;
   score.events = buildScoreEvents(parsed.notes, score.bpm, score.timeSig);
   score.measures = buildMeasures(score.events, score.timeSig);
   score.fileName = file.name;
 
   playhead.idx = 0;
   playhead.t0 = 0;
-  sheetRowStartMeasure = 0;
 
   status(`Loaded ${score.events.filter(e=>e.kind==="note").length} notes • ${score.source} • ${score.bpm} bpm`);
   updateTargetReadout();
@@ -273,6 +310,16 @@ const score = {
   events: [],
   measures: []
 };
+
+function rebuildFromRawNotes(){
+  if (!score._rawNotes) return;
+  const notes = applyMelodyOnlyFilter(score._rawNotes);
+  score.events = buildScoreEvents(notes, score.bpm, score.timeSig);
+  score.measures = buildMeasures(score.events, score.timeSig);
+  playhead.idx = 0;
+  playhead.t0 = 0;
+  updateTargetReadout();
+}
 
 // ---------- MIDI parsing ----------
 function parseMIDI(arrayBuffer){
@@ -319,68 +366,199 @@ function parseMusicXML(xmlText){
   const divisions = Number(divEl?.textContent || "1") || 1;
 
   const notes = [];
-
-  // IMPORTANT:
-  // MusicXML durations are in "divisions". We must accumulate time across measures.
-  // Also, measures may contain multiple voices using <backup>/<forward>. We keep a single cursor and
-  // track the maximum cursor reached in each measure to advance global time correctly.
-  let globalDiv = 0;
-
+  let cursorDiv = 0;
   const measures = [...dom.querySelectorAll("measure")];
   for (const m of measures){
-    let cursorDiv = 0;
-    let maxCursorDiv = 0;
-
+    cursorDiv = 0;
     const kids = [...m.children];
     for (const el of kids){
       if (el.tagName === "note"){
         const isRest = !!el.querySelector("rest");
-        const isChord = !!el.querySelector("chord"); // chord notes share the same start time
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
-
-        // If <chord/> exists, do not advance cursorDiv before placing this note.
-        const noteStartDiv = globalDiv + cursorDiv;
+        const voiceTimeDiv = cursorDiv;
 
         if (!isRest){
           const step = el.querySelector("pitch > step")?.textContent || "C";
           const octave = Number(el.querySelector("pitch > octave")?.textContent || "4");
           const alter = Number(el.querySelector("pitch > alter")?.textContent || "0") || 0;
           const midi = stepOctAlterToMidi(step, octave, alter);
-
           notes.push({
             midi,
-            timeSec: (noteStartDiv / divisions) * (60 / bpm),
+            timeSec: (voiceTimeDiv / divisions) * (60 / bpm),
             durSec: (durDiv / divisions) * (60 / bpm)
           });
         }
-
-        // Advance cursor unless this is a chord continuation
-        if (!isChord) cursorDiv += durDiv;
-        maxCursorDiv = Math.max(maxCursorDiv, cursorDiv);
+        cursorDiv += durDiv;
       }
-
       if (el.tagName === "backup"){
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
         cursorDiv -= durDiv;
-        if (cursorDiv < 0) cursorDiv = 0;
       }
-
       if (el.tagName === "forward"){
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
         cursorDiv += durDiv;
-        maxCursorDiv = Math.max(maxCursorDiv, cursorDiv);
       }
     }
-
-    // Move global time forward by the furthest any voice reached in this measure.
-    globalDiv += maxCursorDiv;
   }
 
   notes.sort((a,b) => a.timeSec - b.timeSec);
   return { bpm, timeSig, notes };
 }
 
-function stepOctAlterToMidi(step, octave, alter){
+function stepOctAlterToMidi
+// ---------- MuseScore (.mscz/.mscx) parsing (best-effort) ----------
+async function parseMSCZ(arrayBuffer){
+  // .mscz is a zip container. We dynamically import JSZip only when needed.
+  const mod = await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm");
+  const JSZip = mod.default;
+  const zip = await JSZip.loadAsync(arrayBuffer);
+
+  // Find the first .mscx file in the zip
+  let mscxName = null;
+  zip.forEach((path, file) => {
+    if (!mscxName && !file.dir && path.toLowerCase().endsWith(".mscx")) mscxName = path;
+  });
+  if (!mscxName) throw new Error("No .mscx found inside .mscz");
+
+  const xmlText = await zip.file(mscxName).async("string");
+  return parseMSCX(xmlText);
+}
+
+function parseMSCX(xmlText){
+  const dom = new DOMParser().parseFromString(xmlText, "text/xml");
+  const parserErr = dom.querySelector("parsererror");
+  if (parserErr) console.warn("MSCX parse error:", parserErr.textContent);
+
+  // MuseScore 3 uses <Division> ticks-per-quarter
+  const divEl = dom.querySelector("Division");
+  const division = Number(divEl?.textContent || "480") || 480;
+
+  // Time signature: <TimeSig><sigN>4</sigN><sigD>4</sigD>
+  let timeSig = { num: 4, den: 4 };
+  const tsEl = dom.querySelector("TimeSig");
+  if (tsEl){
+    const n = Number(tsEl.querySelector("sigN")?.textContent || "4");
+    const d = Number(tsEl.querySelector("sigD")?.textContent || "4");
+    if (n && d) timeSig = { num: n, den: d };
+  }
+
+  // Tempo: MuseScore stores tempo in <Tempo><tempo> (quarter-notes per second) or sometimes textual.
+  let bpm = 120;
+  const tempoEl = dom.querySelector("Tempo tempo, Tempo > tempo");
+  if (tempoEl){
+    const qps = Number(tempoEl.textContent || "0");
+    if (qps > 0) bpm = qps * 60;
+  }
+
+  // Choose the first staff only (treble staff for your use case)
+  const staff = dom.querySelector("Score > Staff") || dom.querySelector("Staff");
+  if (!staff) return { bpm, timeSig, notes: [] };
+
+  // Helper: durationType -> beats (quarter=1.0)
+  const durBeats = (durType) => {
+    switch ((durType || "").toLowerCase()){
+      case "measure": return timeSig.num * (4 / timeSig.den);
+      case "whole": return 4;
+      case "half": return 2;
+      case "quarter": return 1;
+      case "eighth": return 0.5;
+      case "16th": return 0.25;
+      case "32nd": return 0.125;
+      case "64th": return 0.0625;
+      default: return 1;
+    }
+  };
+
+  const ticksPerBeat = division; // quarter note beat
+  const beatsToSec = (beats) => beats * (60 / bpm);
+
+  const notes = [];
+
+  // MuseScore stores content under <Measure> with one or more <voice> elements.
+  const measures = [...staff.querySelectorAll("Measure")];
+
+  let globalTick = 0;
+
+  for (const meas of measures){
+    // If melodyOnly, we prefer voice 1 only (first <voice>). Otherwise merge all voices by a simple sequential pass.
+    const voices = [...meas.querySelectorAll(":scope > voice")];
+    const useVoices = (melodyOnly && voices.length) ? [voices[0]] : (voices.length ? voices : [meas]);
+
+    // For multi-voice without explicit ticks, we do a simple sequential interpretation per voice and then merge by time.
+    // Best-effort: measure-relative cursor for each voice, merged into global.
+    const voiceNotes = [];
+
+    for (const v of useVoices){
+      let tick = globalTick;
+
+      // direct children can include Chord, Rest, TimeSig, Tempo, etc.
+      const items = [...v.children].filter(el => el.tagName !== "Irregular");
+      for (const it of items){
+        if (it.tagName === "Chord"){
+          const durType = it.querySelector("durationType")?.textContent || "quarter";
+          const dots = Number(it.querySelector("dots")?.textContent || "0") || 0;
+          let beats = durBeats(durType);
+          if (dots === 1) beats *= 1.5;
+          else if (dots === 2) beats *= 1.75;
+          const durTicks = Math.max(1, Math.round(beats * ticksPerBeat));
+
+          // Chord may contain multiple <Note>; melodyOnly: pick highest pitch
+          const pitchEls = [...it.querySelectorAll("Note > pitch")];
+          if (pitchEls.length){
+            const pitches = pitchEls.map(p => Number(p.textContent || "0")).filter(n => !Number.isNaN(n));
+            if (pitches.length){
+              const pitch = melodyOnly ? Math.max(...pitches) : pitches[0];
+              // MuseScore pitch is MIDI note number
+              voiceNotes.push({
+                midi: pitch,
+                timeSec: (tick / ticksPerBeat) * (60 / bpm),
+                durSec: beatsToSec(beats)
+              });
+
+              if (!melodyOnly){
+                // If not melodyOnly, add remaining notes in chord at the same time
+                const rest = pitches.filter(p => p !== pitch);
+                for (const p of rest){
+                  voiceNotes.push({
+                    midi: p,
+                    timeSec: (tick / ticksPerBeat) * (60 / bpm),
+                    durSec: beatsToSec(beats)
+                  });
+                }
+              }
+            }
+          }
+
+          tick += durTicks;
+        } else if (it.tagName === "Rest"){
+          const durType = it.querySelector("durationType")?.textContent || "quarter";
+          const dots = Number(it.querySelector("dots")?.textContent || "0") || 0;
+          let beats = durBeats(durType);
+          if (dots === 1) beats *= 1.5;
+          else if (dots === 2) beats *= 1.75;
+          tick += Math.max(1, Math.round(beats * ticksPerBeat));
+        } else if (it.tagName === "TimeSig"){
+          // update if a mid-score timesig exists
+          const n = Number(it.querySelector("sigN")?.textContent || "0");
+          const d = Number(it.querySelector("sigD")?.textContent || "0");
+          if (n && d) timeSig = { num: n, den: d };
+        } else if (it.tagName === "Tempo"){
+          const qps = Number(it.querySelector("tempo")?.textContent || "0");
+          if (qps > 0) bpm = qps * 60;
+        }
+      }
+    }
+
+    // Advance globalTick by measure duration inferred from time signature
+    globalTick += Math.round((timeSig.num * (4 / timeSig.den)) * ticksPerBeat);
+
+    notes.push(...voiceNotes);
+  }
+
+  notes.sort((a,b) => a.timeSec - b.timeSec || a.midi - b.midi);
+  return { bpm, timeSig, notes };
+}
+(step, octave, alter){
   const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[step.toUpperCase()] ?? 0;
   return (octave + 1) * 12 + base + alter;
 }
@@ -392,6 +570,30 @@ function beatsPerMeasure(ts){
 function quantStepBeats(){ return 0.25; } // 16th note
 function secToBeats(sec, bpm){ return sec * (bpm / 60); }
 
+
+function applyMelodyOnlyFilter(notes){
+  if (!melodyOnly) return notes;
+  if (!notes || !notes.length) return notes;
+
+  // Group notes that start at the same time (within epsilon) and keep the highest pitch.
+  const eps = 1e-4; // 0.1 ms in seconds
+  const out = [];
+  notes = notes.slice().sort((a,b) => a.timeSec - b.timeSec || a.midi - b.midi);
+
+  let i = 0;
+  while (i < notes.length){
+    const t0 = notes[i].timeSec;
+    let best = notes[i];
+    let j = i + 1;
+    while (j < notes.length && Math.abs(notes[j].timeSec - t0) <= eps){
+      if (notes[j].midi > best.midi) best = notes[j];
+      j++;
+    }
+    out.push(best);
+    i = j;
+  }
+  return out;
+}
 function buildScoreEvents(notes, bpm, ts){
   const q = quantStepBeats();
   const bpmEff = bpm;
@@ -503,74 +705,30 @@ const playhead = {
   startedAt: 0
 };
 
-// Sheet paging: start measure index for the top row (advances in 2-measure rows)
-let sheetRowStartMeasure = 0;
-
 function resetPlayhead(){
   playhead.idx = 0;
   playhead.t0 = 0;
-  sheetRowStartMeasure = 0;
   playhead.startedAt = 0;
 }
 
 function status(t){ statusEl.textContent = t; }
 
-// --- Theme-aware drawing colors (so notes are readable in light theme) ---
-function isLightTheme(){
-  return (document.documentElement.dataset.theme || "").toLowerCase() === "light";
-}
-function staffInk(){
-  // Prefer CSS variables if present, else fall back.
-  const cs = getComputedStyle(document.documentElement);
-  const v = cs.getPropertyValue("--staffInk").trim();
-  if (v) return v;
-  return isLightTheme() ? "rgba(16,18,28,.82)" : "rgba(255,255,255,.20)";
-}
-function noteInk(){
-  const cs = getComputedStyle(document.documentElement);
-  const v = cs.getPropertyValue("--noteInk").trim();
-  if (v) return v;
-  return isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.92)";
-}
-function noteFillInk(){
-  const cs = getComputedStyle(document.documentElement);
-  const v = cs.getPropertyValue("--noteFill").trim();
-  if (v) return v;
-  return isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.92)";
-}
-function noteHollowFill(){
-  return isLightTheme() ? "rgba(16,18,28,.06)" : "rgba(255,255,255,.06)";
-}
-
 function startPreview(){
   if (!score.events.length){ status("Load a MIDI or MusicXML file first."); return; }
   if (mode !== "preview"){ setMode("preview"); }
-
   const ctx = ensureAudio();
   ctx.resume?.();
 
-  // Reset playhead/scheduler pointer
-  if (audio.pauseAt <= 0) {
-    playhead.idx = 0;
-  } else {
-    // seek to beat at pause
-    const beatAtPause = secToBeats(Math.max(0, audio.pauseAt), score.bpm * tempoMul);
-    playhead.idx = seekIdxByBeat(beatAtPause);
-  }
-
   audio.isPlaying = true;
-
   const now = ctx.currentTime;
+
   const countInBeats = (Number(countInEl.value||0) || 0) * (4 / score.timeSig.den);
   const countInSec = scoreBeatToSec(countInBeats);
 
-  // Small scheduling lead helps iOS and prevents "first note missed".
-  const lead = 0.06;
-
   if (audio.pauseAt > 0){
-    playhead.startedAt = (now + lead) - audio.pauseAt;
+    playhead.startedAt = now - audio.pauseAt;
   }else{
-    playhead.startedAt = now + lead + countInSec;
+    playhead.startedAt = now + countInSec;
   }
 
   if (audio.schedTimer) clearInterval(audio.schedTimer);
@@ -589,67 +747,26 @@ function pausePreview(){
   status("Paused");
 }
 
-let metroState = { lastScheduledBeat: null };
-
-function playClick(when, strong=false){
-  const ctx = ensureAudio();
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = "square";
-  osc.frequency.setValueAtTime(strong ? 1200 : 900, when);
-  g.gain.setValueAtTime(0.0001, when);
-  g.gain.exponentialRampToValueAtTime(strong ? 0.6 : 0.35, when + 0.002);
-  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.03);
-  osc.connect(g);
-  g.connect(audio.master);
-  osc.start(when);
-  osc.stop(when + 0.04);
-}
-
-function seekIdxByBeat(beat){
-  // Find first event whose startBeat >= beat, but don't skip events at 0 due to tiny time drift.
-  for (let i=0;i<score.events.length;i++){
-    if (score.events[i].startBeat >= (beat - 0.02)) return i;
-  }
-  return score.events.length;
-}
-
 function schedulerTick(){
   if (!audio.isPlaying) return;
   const ctx = ensureAudio();
 
-  const lookahead = 0.16;
+  const lookahead = 0.12;
   const now = ctx.currentTime;
 
   const tSec = now - playhead.startedAt;
   const tBeat = secToBeats(Math.max(0, tSec), score.bpm * tempoMul);
 
-  // Metronome (preview mode only)
-  if (metroOnEl?.checked){
-    const beatsPerBar = score.timeSig.num;
-    const beatNow = tBeat;
-    const startBeat = Math.floor(beatNow);
-    const endBeat = Math.floor(beatNow + secToBeats(lookahead, score.bpm * tempoMul)) + 1;
-
-    if (metroState.lastScheduledBeat == null) metroState.lastScheduledBeat = startBeat - 1;
-
-    for (let b = metroState.lastScheduledBeat + 1; b <= endBeat; b++){
-      const when = playhead.startedAt + scoreBeatToSec(b);
-      if (when >= now - 0.01 && when <= now + lookahead + 0.02){
-        const isStrong = (b % beatsPerBar) === 0;
-        playClick(when, isStrong);
-        metroState.lastScheduledBeat = b;
-      }
-    }
-  } else {
-    metroState.lastScheduledBeat = null;
+  while (playhead.idx < score.events.length){
+    const ev = score.events[playhead.idx];
+    const evStart = ev.startBeat;
+    if (evStart >= tBeat) break;
+    playhead.idx++;
   }
 
-  // Schedule notes
   while (playhead.idx < score.events.length){
     const ev = score.events[playhead.idx];
     const evStartSec = playhead.startedAt + scoreBeatToSec(ev.startBeat);
-
     if (evStartSec > now + lookahead) break;
 
     if (ev.kind === "note"){
@@ -679,6 +796,24 @@ pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
 // ---------- Learn Mode (Mic pitch detection + latch) ----------
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -729,11 +864,8 @@ async function startMic(){
 }
 
 function stopMic(){
-  if (!mic) return;
-
   if (mic.raf) cancelAnimationFrame(mic.raf);
   mic.raf = null;
-
   if (mic.stream){
     mic.stream.getTracks().forEach(t => t.stop());
     mic.stream = null;
@@ -742,8 +874,7 @@ function stopMic(){
     mic.ctx.close?.();
     mic.ctx = null;
   }
-
-  if (micStatusTxt) micStatusTxt.textContent = "Mic stopped";
+  micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
@@ -931,20 +1062,6 @@ function micLoop(ts){
 }
 
 // ---------- Rendering ----------
-// Theme-aware ink colors for canvas drawing
-function themeIsLight(){
-  return (document.documentElement.dataset.theme || "").toLowerCase() === "light";
-}
-function ink(){
-  // Prefer CSS variable if present
-  const v = getComputedStyle(document.documentElement).getPropertyValue("--ink").trim();
-  if (v) return v;
-  return themeIsLight() ? "rgba(10,16,28,.92)" : "rgba(255,255,255,.92)";
-}
-function inkSubtle(alphaDark=0.22, alphaLight=0.18){
-  const base = themeIsLight() ? `rgba(10,16,28,${alphaLight})` : `rgba(255,255,255,${alphaDark})`;
-  return base;
-}
 function resizeCanvasToDisplaySize(c, minH=260){
   const dpr = window.devicePixelRatio || 1;
   const rect = c.getBoundingClientRect();
@@ -990,16 +1107,7 @@ function drawFalling(){
     ctx.fillRect(pad + i*laneW, 0, laneW-2, H);
   }
 
-  // Lane labels (string names)
-  ctx.fillStyle = "rgba(255,255,255,.75)";
-  ctx.font = `${Math.round(16*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textBaseline = "top";
-  for (let i=0;i<4;i++){
-    const x = pad + i*laneW + 10;
-    ctx.fillText(lanes[i].name, x, 10*(window.devicePixelRatio||1));
-  }
-
-  const hitY = H * 0.78;
+  const hitY = H * 0.72;
   ctx.strokeStyle = "rgba(255,255,255,.22)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -1023,46 +1131,27 @@ function drawFalling(){
     const w = laneW - 16;
 
     const dyBeats = ev.startBeat - bNow;
-
-// Falling time scale: pixels-per-beat. This controls both fall speed and sustain height,
-// so longer notes literally appear "longer" relative to the play-now bar.
-const pxPerBeat = (H * 0.22);
-
-// Where the note *ends* (i.e., its "start moment") hits the play line.
-const yBottom = hitY - dyBeats * pxPerBeat;
-
-// Sustain height is proportional to duration in beats (with a minimum so 1/16 isn't tiny on phones).
-const minH = 56; // baseline readable size for a 1/16 note
-const maxH = H * 0.55; // avoid absurdly tall whole notes on small screens
-let rectH = ev.durBeat * pxPerBeat;
-rectH = Math.max(minH, Math.min(maxH, rectH));
-
-// Draw as a sustain bar that ends at yBottom.
-const yTop = yBottom - rectH;
-const yMid = (yTop + yBottom) / 2;
+    const y = hitY - dyBeats * (H * 0.22);
+    const rectH = Math.max(44, Math.min(72, ev.durBeat * 60));
 
     let fill = "rgba(200,200,200,.28)";
     if (Math.abs(dyBeats) < 0.12) fill = "rgba(91,140,255,.80)";
     if (dyBeats < -0.25) fill = "rgba(255,176,32,.55)";
 
     ctx.fillStyle = fill;
-    roundRect(ctx, x, yTop, w, rectH, 14);
+    roundRect(ctx, x, y - rectH/2, w, rectH, 14);
     ctx.fill();
 
-    ctx.fillStyle = isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.95)";
+    ctx.fillStyle = "rgba(255,255,255,.95)";
     ctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
     const name = midiToName(ev.midi);
     const fing = violinFingerForMidi(ev.midi);
 
-    const ty = Math.min(yBottom - 8, yTop + 18);
-    // Note name left, finger hint right for readability on phones
-    ctx.textAlign = "left";
+    const ty = y - 4;
     ctx.fillText(name, x + 12, ty);
     ctx.globalAlpha = 0.92;
-    ctx.textAlign = "right";
-    ctx.fillText(`${fing.string} ${fing.finger}`, x + w - 12, ty);
+    ctx.fillText(`${fing.string} ${fing.finger}`, x + 12, ty + 18);
     ctx.globalAlpha = 1;
-    ctx.textAlign = "left";
   }
 }
 
@@ -1113,19 +1202,15 @@ function durKind(beats){
 }
 
 function drawTrebleClef(x, y){
-  // y should be around the middle staff line for best alignment.
-  const dpr = (window.devicePixelRatio||1);
   sctx.save();
-  sctx.fillStyle = ink();
-  sctx.font = `${Math.round(44*dpr)}px serif`;
-  sctx.textBaseline = "middle";
+  sctx.fillStyle = "rgba(255,255,255,.92)";
+  sctx.font = `${Math.round(38*(window.devicePixelRatio||1))}px serif`;
   sctx.fillText("𝄞", x, y);
   sctx.restore();
 }
 
-
 function drawSheet(){
-  resizeCanvasToDisplaySize(sheetCanvas, 320);
+  resizeCanvasToDisplaySize(sheetCanvas, 260);
   const W = sheetCanvas.width, H = sheetCanvas.height;
   sctx.clearRect(0,0,W,H);
 
@@ -1136,235 +1221,167 @@ function drawSheet(){
     return;
   }
 
-  const dpr = (window.devicePixelRatio||1);
-  const padX = 18 * dpr;
-  const padY = 16 * dpr;
+  const padX = 18 * (window.devicePixelRatio||1);
+  const padY = 18 * (window.devicePixelRatio||1);
+  const lineGap = 14 * (window.devicePixelRatio||1);
+  const staffTopY = padY + 18*(window.devicePixelRatio||1);
+  const staffBottomY = staffTopY + 4*lineGap;
 
-  // Staff sizing (fill vertical space better; 3 systems)
-  const systems = 3;
-  const systemGap = 22 * dpr;
-  const staffLineGap = 12.5 * dpr;      // distance between staff lines
-  const staffHeight = 4 * staffLineGap; // 5 lines -> 4 gaps
-  const systemHeight = staffHeight + 30 * dpr; // include some headroom for stems/ledger/labels
+  sctx.strokeStyle = "rgba(255,255,255,.20)";
+  sctx.lineWidth = 2;
+  for (let i=0;i<5;i++){
+    const y = staffTopY + i*lineGap;
+    sctx.beginPath();
+    sctx.moveTo(padX, y);
+    sctx.lineTo(W-padX, y);
+    sctx.stroke();
+  }
 
-  const totalH = systems*systemHeight + (systems-1)*systemGap;
-  const top = padY + Math.max(0, (H - totalH) * 0.10); // small centering bias
-  const clefW = 52 * dpr;
+  drawTrebleClef(padX + 2, staffBottomY + lineGap*0.25);
 
-  // Beats/measure window: 3 rows, 2 measures each (total 6 measures)
   if (!score.measures.length){
-    const staffTopY = top + 18*dpr;
-    const staffBottomY = staffTopY + staffHeight;
-    sctx.strokeStyle = inkSubtle(0.20, 0.20);
-    sctx.lineWidth = 2;
-    for (let si=0; si<systems; si++){
-      const y0 = staffTopY + si*(systemHeight+systemGap);
-      for (let i=0;i<5;i++){
-        const y = y0 + i*staffLineGap;
-        sctx.beginPath();
-        sctx.moveTo(padX, y);
-        sctx.lineTo(W-padX, y);
-        sctx.stroke();
-      }
-      drawTrebleClef(padX + 2, y0 + staffHeight/2);
-    }
-    sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.72)" : "rgba(255,255,255,.72)";
-    sctx.font = `${Math.round(14*dpr)}px system-ui`;
-    sctx.fillText("Load a MIDI or MusicXML file to see notes.", padX + clefW, staffTopY + 2*staffLineGap);
+    sctx.fillStyle = "rgba(255,255,255,.7)";
+    sctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui`;
+    sctx.fillText("Load a MIDI or MusicXML file to see notes.", padX + 52*(window.devicePixelRatio||1), staffTopY + 2*lineGap);
     return;
   }
 
   const bNow = (mode==="preview" && audio.isPlaying) ? nowPlayBeat() : 0;
   const mLen = beatsPerMeasure(score.timeSig);
   const curMeasureIdx = Math.max(0, Math.min(score.measures.length-1, Math.floor(bNow / mLen)));
+  const m0 = score.measures[curMeasureIdx];
+  const m1 = score.measures[Math.min(score.measures.length-1, curMeasureIdx+1)];
 
-  // Row-based paging: 2 measures per row. Only advance the window when the *row* completes.
-  // When not playing, snap the window to the row containing the current measure.
-  if (!(mode==="preview" && audio.isPlaying)) {
-    sheetRowStartMeasure = Math.floor(curMeasureIdx / 2) * 2;
-  } else {
-    // If we've moved beyond the current row, advance in 2-measure steps.
-    const rowEnd = sheetRowStartMeasure + 2;
-    if (curMeasureIdx >= rowEnd) {
-      const deltaRows = Math.floor((curMeasureIdx - sheetRowStartMeasure) / 2);
-      sheetRowStartMeasure = sheetRowStartMeasure + deltaRows * 2;
-    }
-    // If we jumped backwards (seek/stop-start), clamp back.
-    if (curMeasureIdx < sheetRowStartMeasure) {
-      sheetRowStartMeasure = Math.floor(curMeasureIdx / 2) * 2;
-    }
-  }
-  sheetRowStartMeasure = Math.max(0, Math.min(score.measures.length-1, sheetRowStartMeasure));
+  const windowMeasures = [m0, m1];
 
-  // Build 6-measure window starting at the row boundary (3 systems × 2 measures)
-  const windowMeasures = [];
-  for (let k=0;k<6;k++){
-    windowMeasures.push(score.measures[Math.min(score.measures.length-1, sheetRowStartMeasure + k)]);
-  }
-
-  // Geometry per system
+  const clefW = 52*(window.devicePixelRatio||1);
   const usableW = (W - padX*2 - clefW);
   const measureW = usableW / 2;
   const x0 = padX + clefW;
 
-  // Draw each system
-  for (let sys=0; sys<systems; sys++){
-    const rowMeasures = windowMeasures.slice(sys*2, sys*2+2);
+  sctx.strokeStyle = "rgba(255,255,255,.25)";
+  sctx.lineWidth = 2;
+  for (let i=0;i<3;i++){
+    const x = x0 + i*measureW;
+    sctx.beginPath();
+    sctx.moveTo(x, staffTopY);
+    sctx.lineTo(x, staffBottomY);
+    sctx.stroke();
+  }
 
-    const staffTopY = top + 18*dpr + sys*(systemHeight + systemGap);
-    const staffBottomY = staffTopY + staffHeight;
+  for (let mi=0; mi<2; mi++){
+    const m = windowMeasures[mi];
+    const baseX = x0 + mi*measureW;
+    const beatSpan = mLen;
 
-    // staff lines
-    sctx.strokeStyle = inkSubtle(0.20, 0.20);
-    sctx.lineWidth = 2;
-    for (let i=0;i<5;i++){
-      const y = staffTopY + i*staffLineGap;
+    const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
+    const xForBeat = (beat) => baseX + ( (beat - m.startBeat) / beatSpan ) * (measureW - 14*(window.devicePixelRatio||1)) + 8*(window.devicePixelRatio||1);
+
+    for (const ev of evs){
+      const x = xForBeat(ev.startBeat);
+
+      if (ev.kind === "rest"){
+        sctx.fillStyle = "rgba(255,255,255,.75)";
+        sctx.font = `${Math.round(18*(window.devicePixelRatio||1))}px serif`;
+        const k = durKind(ev.durBeat);
+        const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
+        sctx.fillText(glyph, x, staffTopY + 3.1*lineGap);
+        continue;
+      }
+
+      const y = staffYForMidi(ev.midi, staffBottomY, lineGap);
+
+      const kind = durKind(ev.durBeat);
+      const filled = !(kind==="whole" || kind==="half");
+      const headW = 14*(window.devicePixelRatio||1);
+      const headH = 10*(window.devicePixelRatio||1);
+
+      sctx.save();
+      sctx.translate(x, y);
+      sctx.rotate(-0.35);
+      sctx.strokeStyle = "rgba(255,255,255,.92)";
+      sctx.lineWidth = 2;
+      sctx.fillStyle = filled ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.06)";
       sctx.beginPath();
-      sctx.moveTo(padX, y);
-      sctx.lineTo(W-padX, y);
+      sctx.ellipse(0, 0, headW/2, headH/2, 0, 0, Math.PI*2);
+      sctx.fill();
       sctx.stroke();
-    }
+      sctx.restore();
 
-    // treble clef (aligned to middle of staff)
-    drawTrebleClef(padX + 2, staffTopY + staffHeight/2);
+      const st = midiToStepOct(ev.midi);
+      if (st.accidental){
+        sctx.fillStyle = "rgba(255,255,255,.86)";
+        sctx.font = `${Math.round(16*(window.devicePixelRatio||1))}px system-ui`;
+        sctx.fillText(st.accidental, x - 18*(window.devicePixelRatio||1), y + 6*(window.devicePixelRatio||1));
+      }
 
-    // barlines (2 measures per system)
-    sctx.strokeStyle = inkSubtle(0.25, 0.22);
-    sctx.lineWidth = 2;
-    for (let i=0;i<3;i++){
-      const x = x0 + i*measureW;
-      sctx.beginPath();
-      sctx.moveTo(x, staffTopY);
-      sctx.lineTo(x, staffBottomY);
-      sctx.stroke();
-    }
-
-    // Draw notes/rests in the two measures
-    for (let mi=0; mi<2; mi++){
-      const m = rowMeasures[mi];
-      const baseX = x0 + mi*measureW;
-      const beatSpan = mLen;
-
-      const xForBeat = (beat) => baseX + ((beat - m.startBeat) / beatSpan) * (measureW - 14*dpr) + 8*dpr;
-      const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
-
-      for (const ev of evs){
-        const x = xForBeat(ev.startBeat);
-
-        if (ev.kind === "rest"){
-          sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.75)" : "rgba(255,255,255,.75)";
-          sctx.font = `${Math.round(18*dpr)}px serif`;
-          const k = durKind(ev.durBeat);
-          const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
-          sctx.textBaseline = "middle";
-          sctx.fillText(glyph, x, staffTopY + staffHeight*0.55);
-          continue;
-        }
-
-        const y = staffYForMidi(ev.midi, staffBottomY, staffLineGap);
-
-        const kind = durKind(ev.durBeat);
-        const filled = !(kind==="whole" || kind==="half");
-        const headW = 14*dpr;
-        const headH = 10*dpr;
-
-        // notehead
-        sctx.save();
-        sctx.translate(x, y);
-        sctx.rotate(-0.35);
-        sctx.strokeStyle = ink();
+      if (kind !== "whole"){
+        const stemUp = (y > staffTopY + 2*lineGap);
+        sctx.strokeStyle = "rgba(255,255,255,.92)";
         sctx.lineWidth = 2;
-        sctx.fillStyle = filled ? ink() : (themeIsLight() ? "rgba(10,16,28,.08)" : "rgba(255,255,255,.06)");
+
+        const stemX = x + (stemUp ? (headW/2) : -(headW/2));
+        const stemLen = 38*(window.devicePixelRatio||1);
+        const y1 = y;
+        const y2 = stemUp ? (y - stemLen) : (y + stemLen);
+
         sctx.beginPath();
-        sctx.ellipse(0, 0, headW/2, headH/2, 0, 0, Math.PI*2);
-        sctx.fill();
+        sctx.moveTo(stemX, y1);
+        sctx.lineTo(stemX, y2);
         sctx.stroke();
-        sctx.restore();
 
-        // accidental
-        const st = midiToStepOct(ev.midi);
-        if (st.accidental){
-          sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.86)" : "rgba(255,255,255,.86)";
-          sctx.font = `${Math.round(16*dpr)}px system-ui`;
-          sctx.textBaseline = "alphabetic";
-          sctx.fillText(st.accidental, x - 18*dpr, y + 6*dpr);
-        }
-
-        // stem + flags
-        if (kind !== "whole"){
-          const stemUp = (y > staffTopY + 2*staffLineGap);
-          sctx.strokeStyle = ink();
-          sctx.lineWidth = 2;
-
-          const stemX = x + (stemUp ? (headW/2) : -(headW/2));
-          const stemLen = 38*dpr;
-          const y1 = y;
-          const y2 = stemUp ? (y - stemLen) : (y + stemLen);
+        if (kind === "eighth" || kind === "sixteenth"){
+          const dir = stemUp ? -1 : 1;
+          const fx = stemX;
+          const fy = y2;
 
           sctx.beginPath();
-          sctx.moveTo(stemX, y1);
-          sctx.lineTo(stemX, y2);
+          sctx.moveTo(fx, fy);
+          sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy + 6*dir, fx + 6*(window.devicePixelRatio||1), fy + 14*dir);
           sctx.stroke();
 
-          if (kind === "eighth" || kind === "sixteenth"){
-            const dir = stemUp ? -1 : 1;
-            const fx = stemX;
-            const fy = y2;
-
+          if (kind === "sixteenth"){
+            const fy2 = fy + 10*dir;
             sctx.beginPath();
-            sctx.moveTo(fx, fy);
-            sctx.quadraticCurveTo(fx + 10*dpr, fy + 6*dir, fx + 6*dpr, fy + 14*dir);
-            sctx.stroke();
-
-            if (kind === "sixteenth"){
-              const fy2 = fy + 10*dir;
-              sctx.beginPath();
-              sctx.moveTo(fx, fy2);
-              sctx.quadraticCurveTo(fx + 10*dpr, fy2 + 6*dir, fx + 6*dpr, fy2 + 14*dir);
-              sctx.stroke();
-            }
-          }
-        }
-
-        // ledger lines (keep)
-        const yMin = staffTopY;
-        const yMax = staffBottomY;
-        sctx.strokeStyle = inkSubtle(0.20, 0.20);
-        sctx.lineWidth = 2;
-        if (y < yMin){
-          for (let ly = yMin - staffLineGap; ly >= y; ly -= staffLineGap){
-            sctx.beginPath();
-            sctx.moveTo(x - 10*dpr, ly);
-            sctx.lineTo(x + 10*dpr, ly);
-            sctx.stroke();
-          }
-        } else if (y > yMax){
-          for (let ly = yMax + staffLineGap; ly <= y; ly += staffLineGap){
-            sctx.beginPath();
-            sctx.moveTo(x - 10*dpr, ly);
-            sctx.lineTo(x + 10*dpr, ly);
+            sctx.moveTo(fx, fy2);
+            sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy2 + 6*dir, fx + 6*(window.devicePixelRatio||1), fy2 + 14*dir);
             sctx.stroke();
           }
         }
       }
-    }
 
-    // Caret only on first system, moving across the full row (2 measures)
-    if (sys === 0 && mode==="preview" && audio.isPlaying){
-      const rowStartBeat = sheetRowStartMeasure * mLen;
-      const rowBeats = 2 * mLen;
-      const t = Math.max(0, Math.min(1, (bNow - rowStartBeat) / rowBeats));
-      const caretX = x0 + t * (2 * measureW);
-      sctx.strokeStyle = "rgba(91,140,255,.9)";
-      sctx.lineWidth = 3;
-      sctx.beginPath();
-      sctx.moveTo(caretX, staffTopY - 10*dpr);
-      sctx.lineTo(caretX, staffBottomY + 10*dpr);
-      sctx.stroke();
+      const yMin = staffTopY;
+      const yMax = staffBottomY;
+      sctx.strokeStyle = "rgba(255,255,255,.20)";
+      sctx.lineWidth = 2;
+      if (y < yMin){
+        for (let ly = yMin - lineGap; ly >= y; ly -= lineGap){
+          sctx.beginPath();
+          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
+          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
+          sctx.stroke();
+        }
+      } else if (y > yMax){
+        for (let ly = yMax + lineGap; ly <= y; ly += lineGap){
+          sctx.beginPath();
+          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
+          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
+          sctx.stroke();
+        }
+      }
     }
   }
-}
 
+  if (mode==="preview" && audio.isPlaying){
+    const xCaret = x0 + ( (bNow - m0.startBeat) / mLen ) * measureW;
+    sctx.strokeStyle = "rgba(91,140,255,.9)";
+    sctx.lineWidth = 3;
+    sctx.beginPath();
+    sctx.moveTo(xCaret, staffTopY - 10*(window.devicePixelRatio||1));
+    sctx.lineTo(xCaret, staffBottomY + 10*(window.devicePixelRatio||1));
+    sctx.stroke();
+  }
+}
 
 // ---------- Animation loop ----------
 function renderLoop(){
@@ -1391,12 +1408,14 @@ function stopAll(){
   if (audio.schedTimer) clearInterval(audio.schedTimer);
   audio.schedTimer = null;
   resetPlayhead();
-  sheetRowStartMeasure = 0;
   status("Stopped");
   updateTargetAtStop();
 }
 
 // ---------- Init ----------
-setHeaderFilename(""); // shows helper text
+setHeaderFilename("");
+// allow .mscz in file picker
+try{ if (scoreFile && scoreFile.accept && !scoreFile.accept.includes('.mscz')) scoreFile.accept += ',.mscz'; }catch(e){}
+ // shows helper text
 status("Ready. Tap the folder to load a file.");
 updateTargetReadout();
