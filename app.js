@@ -164,26 +164,6 @@ function attachRipple(el){
 }
 document.querySelectorAll(".ripple").forEach(attachRipple);
 
-// --- Mic state must be defined before setMode() can call stopMic() ---
-var mic = {
-  stream: null,
-  ctx: null,
-  src: null,
-  analyser: null,
-  buf: null,
-  raf: null,
-
-  freq: 0,
-  clarity: 0,
-  rms: 0,
-
-  latched: false,
-  stableMs: 0,
-  releaseMs: 0,
-  lastFrameTs: 0,
-  lastAdvanceAt: 0
-};
-
 // ---------- Core state ----------
 let mode = "preview"; // preview | learn
 let tempoMul = 1.0;
@@ -739,6 +719,33 @@ function resetPlayhead(){
   playhead.startedAt = 0;
 }
 
+// --- Theme-aware drawing colors (sheet music readability on light themes) ---
+function isLightTheme(){
+  const t = (document.documentElement.dataset.theme || "").toLowerCase();
+  return t === "light";
+}
+function staffInk(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--staffInk").trim();
+  if (v) return v;
+  return isLightTheme() ? "rgba(16,18,28,.28)" : "rgba(255,255,255,.20)";
+}
+function noteInk(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--noteInk").trim();
+  if (v) return v;
+  return isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.92)";
+}
+function noteFillInk(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--noteFill").trim();
+  if (v) return v;
+  return noteInk();
+}
+function noteHollowFill(){
+  return isLightTheme() ? "rgba(16,18,28,.06)" : "rgba(255,255,255,.06)";
+}
+
 function status(t){ statusEl.textContent = t; }
 
 function startPreview(){
@@ -823,7 +830,25 @@ playBtn.addEventListener("click", startPreview);
 pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
-// ---------- Learn Mode \(Mic pitch detection \+ latch\) ----------
+// ---------- Learn Mode (Mic pitch detection + latch) ----------
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -874,12 +899,8 @@ async function startMic(){
 }
 
 function stopMic(){
-  // Safe to call during startup before mic has initialized/started
-  if (typeof mic === "undefined" || !mic) return;
-
   if (mic.raf) cancelAnimationFrame(mic.raf);
   mic.raf = null;
-
   if (mic.stream){
     mic.stream.getTracks().forEach(t => t.stop());
     mic.stream = null;
@@ -888,8 +909,7 @@ function stopMic(){
     mic.ctx.close?.();
     mic.ctx = null;
   }
-
-  if (typeof micStatusTxt !== "undefined" && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
+  micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
