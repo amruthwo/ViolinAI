@@ -1,148 +1,5 @@
 /* app.js — ViolinAI v15 */
 
-
-// --- Mic state (window-scoped to avoid module TDZ issues) ---
-window.mic = window.mic || {
-  stream: null, ctx: null, src: null, analyser: null, buf: null, raf: null,
-  freq: 0, clarity: 0, rms: 0,
-  latched: false, stableMs: 0, releaseMs: 0,
-  lastFrameTs: 0, lastAdvanceAt: 0
-};
-
-
-// --- Music import helpers: MusicXML + MuseScore (.mscz/.mscx) ---
-function stepOctAlterToMidi(step, octave, alter){
-  const base = {C:0, D:2, E:4, F:5, G:7, A:9, B:11}[step] ?? 0;
-  return (octave + 1) * 12 + base + (alter||0);
-}
-
-async function unzipFirstMSCXFromMSCZ(arrayBuffer){
-  const u8 = new Uint8Array(arrayBuffer);
-  const dv = new DataView(arrayBuffer);
-  let off = 0;
-  const entries = [];
-  while (off + 30 < u8.length){
-    const sig = dv.getUint32(off, true);
-    if (sig !== 0x04034b50) break;
-    const method = dv.getUint16(off+8, true);
-    const compSize = dv.getUint32(off+18, true);
-    const nameLen = dv.getUint16(off+26, true);
-    const extraLen = dv.getUint16(off+28, true);
-    const name = new TextDecoder().decode(u8.slice(off+30, off+30+nameLen));
-    const dataStart = off + 30 + nameLen + extraLen;
-    const dataEnd = dataStart + compSize;
-    const comp = u8.slice(dataStart, dataEnd);
-    entries.push({name, method, comp});
-    off = dataEnd;
-  }
-  const target = entries.find(e => e.name.toLowerCase().endsWith(".mscx")) || entries.find(e => e.name.toLowerCase().endsWith(".xml")) || entries[0];
-  if (!target) throw new Error("MSCZ: no files found");
-
-  if (target.method === 0){
-    return new TextDecoder().decode(target.comp);
-  }
-  if (target.method === 8){
-    if (typeof DecompressionStream === "undefined"){
-      throw new Error("MSCZ: DecompressionStream not supported (Safari iOS often lacks this).");
-    }
-    const ds = new DecompressionStream("deflate-raw");
-    const stream = new Blob([target.comp]).stream().pipeThrough(ds);
-    const out = await new Response(stream).arrayBuffer();
-    return new TextDecoder().decode(new Uint8Array(out));
-  }
-  throw new Error("MSCZ: unsupported compression method " + target.method);
-}
-
-function parseMSCX(mscxText, melodyOnly=true){
-  const dom = new DOMParser().parseFromString(mscxText, "text/xml");
-  let bpm = 120;
-
-  // tempo heuristic (MuseScore can store as qn/s)
-  const tempoEl = dom.querySelector("Tempo tempo") || dom.querySelector("tempo");
-  if (tempoEl){
-    const v = parseFloat(tempoEl.textContent||"");
-    if (isFinite(v)){
-      bpm = (v > 10) ? v : v*60;
-    }
-  }
-
-  let staffs = [...dom.querySelectorAll("Score > Staff")];
-  if (!staffs.length) staffs = [...dom.querySelectorAll("Staff")];
-  if (!staffs.length) return { bpm, timeSig:{num:4,den:4}, notes: [] };
-
-  const avgPitch = (st) => {
-    const ps = [...st.querySelectorAll("Chord Note > pitch")].map(p=>Number(p.textContent||'')).filter(n=>!Number.isNaN(n));
-    if (!ps.length) return -1e9;
-    return ps.reduce((a,b)=>a+b,0)/ps.length;
-  };
-  const staff = staffs.slice().sort((a,b)=>avgPitch(b)-avgPitch(a))[0];
-
-  const divs = 480;
-  let tick = 0;
-  const notes = [];
-  for (const chord of staff.querySelectorAll("Measure Chord")){
-    const type = chord.querySelector("durationType")?.textContent || "quarter";
-    const dots = parseInt(chord.querySelector("dots")?.textContent||"0",10)||0;
-    const durMap = { "64th":divs/16, "32nd":divs/8, "16th":divs/4, "eighth":divs/2, "quarter":divs, "half":divs*2, "whole":divs*4 };
-    let dur = durMap[type] || divs;
-    if (dots===1) dur *= 1.5;
-    if (dots===2) dur *= 1.75;
-    const ps = [...chord.querySelectorAll("Note > pitch")].map(p=>parseInt(p.textContent||"0",10)).filter(n=>!Number.isNaN(n));
-    if (!ps.length) continue;
-    const midi = melodyOnly ? Math.max(...ps) : ps[0];
-    notes.push({ midi, startTick: tick, durTick: dur });
-    tick += dur;
-  }
-  return { bpm, timeSig:{num:4,den:4}, notes };
-}
-
-function parseMusicXML(xmlText, melodyOnly=true){
-  const dom = new DOMParser().parseFromString(xmlText, "text/xml");
-  let bpm = 120;
-  const tempoAttr = dom.querySelector("sound[tempo]")?.getAttribute("tempo");
-  if (tempoAttr){
-    const t = parseFloat(tempoAttr);
-    if (isFinite(t)) bpm = t;
-  }
-
-  let divisions = parseInt(dom.querySelector("divisions")?.textContent || "480", 10);
-  if (!isFinite(divisions) || divisions<=0) divisions = 480;
-
-  const beats = parseInt(dom.querySelector("time > beats")?.textContent || "4", 10) || 4;
-  const beatType = parseInt(dom.querySelector("time > beat-type")?.textContent || "4", 10) || 4;
-  const timeSig = {num: beats, den: beatType};
-
-  let tick = 0;
-  const notes = [];
-  // For melodyOnly: ignore chord continuation notes (<chord/> marker)
-  for (const meas of dom.querySelectorAll("part > measure")){
-    for (const n of meas.querySelectorAll(":scope > note")){
-      const isRest = !!n.querySelector("rest");
-      const isChord = !!n.querySelector("chord");
-      const dur = parseInt(n.querySelector("duration")?.textContent || "0", 10) || 0;
-
-      if (melodyOnly && isChord){
-        // Don't add, don't advance time
-        continue;
-      }
-
-      if (!isRest){
-        const step = n.querySelector("pitch > step")?.textContent;
-        const oct = parseInt(n.querySelector("pitch > octave")?.textContent || "0", 10);
-        const alter = parseInt(n.querySelector("pitch > alter")?.textContent || "0", 10) || 0;
-        if (step && isFinite(oct)){
-          const midi = stepOctAlterToMidi(step, oct, alter);
-          notes.push({ midi, startTick: tick, durTick: dur || divisions });
-        }
-      }
-
-      // Advance time only on non-chord notes
-      tick += (dur || divisions);
-    }
-  }
-  return { bpm, timeSig, notes };
-}
-
 const $ = (id) => document.getElementById(id);
 
 // UI
@@ -207,6 +64,14 @@ const sctx = sheetCanvas.getContext("2d");
   }
 })();
 
+
+// Melody-only import (helps for piano scores / chords)
+let melodyOnly = (localStorage.getItem("va_melodyOnly") || "1") === "1";
+function setMelodyOnly(v){
+  melodyOnly = !!v;
+  localStorage.setItem("va_melodyOnly", melodyOnly ? "1" : "0");
+}
+
 // ---------- Settings / Themes ----------
 function applyThemeButtonLabel(){
   const isLight = document.documentElement.dataset.theme === "light";
@@ -261,6 +126,24 @@ function attachRipple(el){
 document.querySelectorAll(".ripple").forEach(attachRipple);
 
 // --- Mic state must be defined before setMode() can call stopMic() ---
+var mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 // ---------- Core state ----------
 let mode = "preview"; // preview | learn
@@ -369,8 +252,22 @@ async function loadFile(file){
   let parsed;
   if (ext === "xml" || ext === "musicxml") {
     const text = new TextDecoder().decode(buf);
-    parsed = parseMusicXML(text);
+    parsed = parseMusicXML(text, melodyOnly);
     score.source = "MusicXML";
+  } else if (ext === "mscx") {
+    const text = new TextDecoder().decode(buf);
+    parsed = parseMSCX(text, melodyOnly);
+    score.source = "MSCX";
+  } else if (ext === "mscz") {
+    try{
+      const mscxText = await unzipFirstMSCXFromMSCZ(buf);
+      parsed = parseMSCX(mscxText, melodyOnly);
+      score.source = "MSCZ";
+    }catch(e){
+      console.error(e);
+      status("Failed to load MSCZ: " + (e?.message || e));
+      return;
+    }
   } else {
     parsed = parseMIDI(buf);
     score.source = "MIDI";
@@ -398,6 +295,7 @@ const score = {
   events: [],
   measures: []
 };
+window.score = score;
 
 // ---------- MIDI parsing ----------
 function parseMIDI(arrayBuffer){
@@ -423,7 +321,7 @@ function parseMIDI(arrayBuffer){
 }
 
 // ---------- MusicXML parsing (best-effort) ----------
-function parseMusicXML(xmlText){
+function parseMusicXML(xmlText, melodyOnly=true){
   const dom = new DOMParser().parseFromString(xmlText, "text/xml");
   const parserErr = dom.querySelector("parsererror");
   if (parserErr) console.warn("XML parse error:", parserErr.textContent);
@@ -461,6 +359,10 @@ function parseMusicXML(xmlText){
       if (el.tagName === "note"){
         const isRest = !!el.querySelector("rest");
         const isChord = !!el.querySelector("chord"); // chord notes share the same start time
+        if (melodyOnly && isChord) {
+          // Melody-only: ignore chord continuation notes
+          continue;
+        }
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
 
         // If <chord/> exists, do not advance cursorDiv before placing this note.
@@ -509,6 +411,100 @@ function stepOctAlterToMidi(step, octave, alter){
   const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[step.toUpperCase()] ?? 0;
   return (octave + 1) * 12 + base + alter;
 }
+// --- MuseScore import (.mscz / .mscx) ---
+// Minimal ZIP reader for .mscz using DecompressionStream (works on Chromium; Safari may lack it)
+async function unzipFirstMSCXFromMSCZ(arrayBuffer){
+  const u8 = new Uint8Array(arrayBuffer);
+  const dv = new DataView(arrayBuffer);
+  let off = 0;
+  const entries = [];
+  while (off + 30 < u8.length){
+    const sig = dv.getUint32(off, true);
+    if (sig !== 0x04034b50) break; // local file header
+    const method = dv.getUint16(off+8, true);
+    const compSize = dv.getUint32(off+18, true);
+    const nameLen = dv.getUint16(off+26, true);
+    const extraLen = dv.getUint16(off+28, true);
+    const name = new TextDecoder().decode(u8.slice(off+30, off+30+nameLen));
+    const dataStart = off + 30 + nameLen + extraLen;
+    const dataEnd = dataStart + compSize;
+    const comp = u8.slice(dataStart, dataEnd);
+    entries.push({name, method, comp});
+    off = dataEnd;
+  }
+  const target = entries.find(e => e.name.toLowerCase().endsWith(".mscx")) || entries.find(e => e.name.toLowerCase().endsWith(".xml")) || entries[0];
+  if (!target) throw new Error("MSCZ: no embedded MSCX found");
+
+  if (target.method === 0){
+    return new TextDecoder().decode(target.comp);
+  }
+  if (target.method === 8){
+    if (typeof DecompressionStream === "undefined"){
+      throw new Error("MSCZ: DecompressionStream not supported in this browser (Safari iOS often lacks this).");
+    }
+    const ds = new DecompressionStream("deflate-raw");
+    const stream = new Blob([target.comp]).stream().pipeThrough(ds);
+    const out = await new Response(stream).arrayBuffer();
+    return new TextDecoder().decode(new Uint8Array(out));
+  }
+  throw new Error("MSCZ: unsupported compression method " + target.method);
+}
+
+// Very lightweight MSCX parser: extracts chords/notes in time order. Melody-only chooses highest pitch.
+function parseMSCX(mscxText, melodyOnly=true){
+  const dom = new DOMParser().parseFromString(mscxText, "text/xml");
+  const parserErr = dom.querySelector("parsererror");
+  if (parserErr) console.warn("MSCX parse error:", parserErr.textContent);
+
+  let bpm = 120;
+  const tempoEl = dom.querySelector("Tempo tempo") || dom.querySelector("tempo");
+  if (tempoEl){
+    const v = parseFloat(tempoEl.textContent||"");
+    if (isFinite(v)) bpm = (v > 10) ? v : v*60;
+  }
+
+  // choose staff with highest average pitch (treble/right-hand for piano)
+  let staffs = [...dom.querySelectorAll("Score > Staff")];
+  if (!staffs.length) staffs = [...dom.querySelectorAll("Staff")];
+  const avgPitch = (st) => {
+    const ps = [...st.querySelectorAll("Chord Note > pitch")].map(p=>Number(p.textContent||'')).filter(n=>!Number.isNaN(n));
+    if (!ps.length) return -1e9;
+    return ps.reduce((a,b)=>a+b,0)/ps.length;
+  };
+  const staff = staffs.length ? staffs.slice().sort((a,b)=>avgPitch(b)-avgPitch(a))[0] : null;
+  if (!staff) return { bpm, timeSig:{num:4,den:4}, notes: [] };
+
+  const divs = 480; // internal "divisions" for quarter
+  let tick = 0;
+  const notes = [];
+
+  const durMap = { "64th":divs/16, "32nd":divs/8, "16th":divs/4, "eighth":divs/2, "quarter":divs, "half":divs*2, "whole":divs*4 };
+
+  for (const chord of staff.querySelectorAll("Measure Chord")){
+    const type = chord.querySelector("durationType")?.textContent || "quarter";
+    const dots = parseInt(chord.querySelector("dots")?.textContent||"0",10)||0;
+    let dur = durMap[type] || divs;
+    if (dots===1) dur *= 1.5;
+    if (dots===2) dur *= 1.75;
+
+    const ps = [...chord.querySelectorAll("Note > pitch")].map(p=>parseInt(p.textContent||"0",10)).filter(n=>!Number.isNaN(n));
+    if (!ps.length) { tick += dur; continue; }
+    const midi = melodyOnly ? Math.max(...ps) : ps[0];
+
+    notes.push({
+      midi,
+      timeSec: (tick / divs) * (60 / bpm),
+      durSec: (dur / divs) * (60 / bpm)
+    });
+
+    tick += dur;
+  }
+
+  notes.sort((a,b)=>a.timeSec-b.timeSec);
+  return { bpm, timeSig:{num:4,den:4}, notes };
+}
+
+
 
 // ---------- Build practice score (quantize + rests + measure structure) ----------
 function beatsPerMeasure(ts){
@@ -558,39 +554,6 @@ function buildScoreEvents(notes, bpm, ts){
   return events;
 }
 
-
-async function loadFromGenericNotes(rawNotes, bpm, sourceLabel){
-  // rawNotes: [{midi,startTick,durTick}] ticks are in "divisions" space; we'll normalize to beats later.
-  // Map to internal events format used by the app: {midi, t, dur}
-  const divs = 480;
-  const events = rawNotes
-    .filter(n => n && Number.isFinite(n.midi))
-    .map(n => ({
-      midi: n.midi,
-      t: (n.startTick || 0) / divs,     // quarter-note beats
-      dur: Math.max(0.05, (n.durTick || divs) / divs)
-    }))
-    .sort((a,b)=>a.t-b.t);
-
-  // Try to set whichever global the app uses for song state.
-  if (typeof score !== "undefined"){
-    score.events = events;
-    score.bpm = bpm || score.bpm || 120;
-    score.source = sourceLabel || "Imported";
-    if (typeof buildMeasures === "function") score.measures = buildMeasures(score.events);
-    window.score = score;
-  }else{
-    // fallback window.score object
-    window.score = window.score || {};
-    window.score.events = events;
-    window.score.bpm = bpm || 120;
-    window.score.source = sourceLabel || "Imported";
-    if (typeof buildMeasures === "function") window.score.measures = buildMeasures(events);
-  }
-
-  if (typeof setPlayheadToStart === "function") setPlayheadToStart();
-  if (typeof status === "function") status(`Loaded ${events.length} notes • ${sourceLabel} • ${Math.round(bpm||120)} bpm`);
-}
 function buildMeasures(events, ts){
   const mLen = beatsPerMeasure(ts);
   const totalEnd = events.length ? (events[events.length-1].startBeat + events[events.length-1].durBeat) : 0;
@@ -853,32 +816,32 @@ async function startMic(){
       }
     });
 
-    window.mic.stream = stream;
+    mic.stream = stream;
 
     const A = window.AudioContext || window.webkitAudioContext;
-    window.mic.ctx = new A();
-    await window.mic.ctx.resume?.();
+    mic.ctx = new A();
+    await mic.ctx.resume?.();
 
-    window.mic.src = window.mic.ctx.createMediaStreamSource(stream);
-    window.mic.analyser = window.mic.ctx.createAnalyser();
-    window.mic.analyser.fftSize = 2048;
+    mic.src = mic.ctx.createMediaStreamSource(stream);
+    mic.analyser = mic.ctx.createAnalyser();
+    mic.analyser.fftSize = 2048;
 
-    window.mic.src.connect(window.mic.analyser);
+    mic.src.connect(mic.analyser);
 
-    window.mic.buf = new Float32Array(window.mic.analyser.fftSize);
+    mic.buf = new Float32Array(mic.analyser.fftSize);
 
-    window.mic.latched = false;
-    window.mic.stableMs = 0;
-    window.mic.releaseMs = 0;
-    window.mic.lastFrameTs = performance.now();
-    window.mic.lastAdvanceAt = 0;
+    mic.latched = false;
+    mic.stableMs = 0;
+    mic.releaseMs = 0;
+    mic.lastFrameTs = performance.now();
+    mic.lastAdvanceAt = 0;
 
     micStatusTxt.textContent = "Mic running";
     status("Mic started (Learn)");
     updateTargetReadout();
 
-    if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
-    window.mic.raf = requestAnimationFrame(micLoop);
+    if (mic.raf) cancelAnimationFrame(mic.raf);
+    mic.raf = requestAnimationFrame(micLoop);
   }catch(e){
     console.warn(e);
     micStatusTxt.textContent = "Microphone permission denied or unavailable";
@@ -887,22 +850,21 @@ async function startMic(){
 }
 
 function stopMic(){
-  const mic = window.mic;
   if (!mic) return;
 
-  if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
-  window.mic.raf = null;
+  if (mic.raf) cancelAnimationFrame(mic.raf);
+  mic.raf = null;
 
-  if (window.mic.stream){
-    window.mic.stream.getTracks().forEach(t => t.stop());
-    window.mic.stream = null;
+  if (mic.stream){
+    mic.stream.getTracks().forEach(t => t.stop());
+    mic.stream = null;
   }
-  if (window.mic.ctx){
-    window.mic.ctx.close?.();
-    window.mic.ctx = null;
+  if (mic.ctx){
+    mic.ctx.close?.();
+    mic.ctx = null;
   }
 
-  if (typeof micStatusTxt !== "undefined" && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
+  if (micStatusTxt) micStatusTxt.textContent = "Mic stopped";
 }
 
 // Autocorrelation pitch detection
@@ -1018,67 +980,67 @@ function learnTryAdvance(nowMs){
   const tol = Number(tolCentsEl.value||45) || 45;
   const requireStable = waitModeEl.checked;
 
-  if (window.mic.freq <= 0){
-    window.mic.stableMs = 0;
-    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
+  if (mic.freq <= 0){
+    mic.stableMs = 0;
+    mic.releaseMs += (nowMs - mic.lastFrameTs);
     return;
   }
 
-  const actualMidi = freqToMidi(window.mic.freq);
+  const actualMidi = freqToMidi(mic.freq);
   const delta = centsOff(actualMidi, t.ev.midi);
   const abs = Math.abs(delta);
 
   heardTxt.textContent = `${midiToName(actualMidi)} (~${Math.round(actualMidi*10)/10})`;
-  clarityTxt.textContent = window.mic.clarity.toFixed(2);
+  clarityTxt.textContent = mic.clarity.toFixed(2);
   deltaTxt.textContent = `${(delta>=0?"+":"")}${Math.round(delta)} cents`;
-  levelTxt.textContent = window.mic.rms.toFixed(3);
+  levelTxt.textContent = mic.rms.toFixed(3);
 
-  const match = (abs <= tol) && (window.mic.clarity >= 0.55) && (window.mic.rms >= 0.012);
+  const match = (abs <= tol) && (mic.clarity >= 0.55) && (mic.rms >= 0.012);
 
-  const releaseCond = (!match) || (window.mic.clarity < 0.35) || (window.mic.rms < 0.009);
+  const releaseCond = (!match) || (mic.clarity < 0.35) || (mic.rms < 0.009);
   if (releaseCond){
-    window.mic.releaseMs += (nowMs - window.mic.lastFrameTs);
+    mic.releaseMs += (nowMs - mic.lastFrameTs);
   } else {
-    window.mic.releaseMs = 0;
+    mic.releaseMs = 0;
   }
 
-  if (window.mic.latched && window.mic.releaseMs >= 140){
-    window.mic.latched = false;
-    window.mic.stableMs = 0;
+  if (mic.latched && mic.releaseMs >= 140){
+    mic.latched = false;
+    mic.stableMs = 0;
   }
 
-  if (window.mic.latched) return;
+  if (mic.latched) return;
 
   if (match){
-    window.mic.stableMs += (nowMs - window.mic.lastFrameTs);
+    mic.stableMs += (nowMs - mic.lastFrameTs);
   } else {
-    window.mic.stableMs = 0;
+    mic.stableMs = 0;
   }
 
   const minGateMs = Math.max(120, scoreBeatToSec(t.ev.durBeat) * 1000 * 0.35);
-  const stableOk = !requireStable || (window.mic.stableMs >= 120);
-  const gateOk = (nowMs - window.mic.lastAdvanceAt) >= minGateMs;
+  const stableOk = !requireStable || (mic.stableMs >= 120);
+  const gateOk = (nowMs - mic.lastAdvanceAt) >= minGateMs;
 
   if (match && stableOk && gateOk){
     playhead.idx = t.idx + 1;      // advance ONE note only
-    window.mic.latched = true;
-    window.mic.lastAdvanceAt = nowMs;
-    window.mic.stableMs = 0;
-    window.mic.releaseMs = 0;
+    mic.latched = true;
+    mic.lastAdvanceAt = nowMs;
+    mic.stableMs = 0;
+    mic.releaseMs = 0;
     updateTargetReadout();
   }
 }
 
 function micLoop(ts){
-  if (!window.mic.analyser) return;
+  if (!mic.analyser) return;
 
-  window.mic.lastFrameTs = ts;
+  mic.lastFrameTs = ts;
 
-  window.mic.analyser.getFloatTimeDomainData(window.mic.buf);
-  const det = detectPitchACF(window.mic.buf, window.mic.ctx.sampleRate);
-  window.mic.freq = det.freq;
-  window.mic.clarity = det.clarity;
-  window.mic.rms = det.rms;
+  mic.analyser.getFloatTimeDomainData(mic.buf);
+  const det = detectPitchACF(mic.buf, mic.ctx.sampleRate);
+  mic.freq = det.freq;
+  mic.clarity = det.clarity;
+  mic.rms = det.rms;
 
   if (mode === "learn"){
     micBtn.style.display = "";
@@ -1086,7 +1048,7 @@ function micLoop(ts){
     learnTryAdvance(ts);
   }
 
-  window.mic.raf = requestAnimationFrame(micLoop);
+  mic.raf = requestAnimationFrame(micLoop);
 }
 
 // ---------- Rendering ----------
