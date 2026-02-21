@@ -318,39 +318,61 @@ function parseMusicXML(xmlText){
   const divisions = Number(divEl?.textContent || "1") || 1;
 
   const notes = [];
-  let cursorDiv = 0;
+
+  // IMPORTANT:
+  // MusicXML durations are in "divisions". We must accumulate time across measures.
+  // Also, measures may contain multiple voices using <backup>/<forward>. We keep a single cursor and
+  // track the maximum cursor reached in each measure to advance global time correctly.
+  let globalDiv = 0;
+
   const measures = [...dom.querySelectorAll("measure")];
   for (const m of measures){
-    cursorDiv = 0;
+    let cursorDiv = 0;
+    let maxCursorDiv = 0;
+
     const kids = [...m.children];
     for (const el of kids){
       if (el.tagName === "note"){
         const isRest = !!el.querySelector("rest");
+        const isChord = !!el.querySelector("chord"); // chord notes share the same start time
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
-        const voiceTimeDiv = cursorDiv;
+
+        // If <chord/> exists, do not advance cursorDiv before placing this note.
+        const noteStartDiv = globalDiv + cursorDiv;
 
         if (!isRest){
           const step = el.querySelector("pitch > step")?.textContent || "C";
           const octave = Number(el.querySelector("pitch > octave")?.textContent || "4");
           const alter = Number(el.querySelector("pitch > alter")?.textContent || "0") || 0;
           const midi = stepOctAlterToMidi(step, octave, alter);
+
           notes.push({
             midi,
-            timeSec: (voiceTimeDiv / divisions) * (60 / bpm),
+            timeSec: (noteStartDiv / divisions) * (60 / bpm),
             durSec: (durDiv / divisions) * (60 / bpm)
           });
         }
-        cursorDiv += durDiv;
+
+        // Advance cursor unless this is a chord continuation
+        if (!isChord) cursorDiv += durDiv;
+        maxCursorDiv = Math.max(maxCursorDiv, cursorDiv);
       }
+
       if (el.tagName === "backup"){
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
         cursorDiv -= durDiv;
+        if (cursorDiv < 0) cursorDiv = 0;
       }
+
       if (el.tagName === "forward"){
         const durDiv = Number(el.querySelector("duration")?.textContent || "0") || 0;
         cursorDiv += durDiv;
+        maxCursorDiv = Math.max(maxCursorDiv, cursorDiv);
       }
     }
+
+    // Move global time forward by the furthest any voice reached in this measure.
+    globalDiv += maxCursorDiv;
   }
 
   notes.sort((a,b) => a.timeSec - b.timeSec);
@@ -491,19 +513,32 @@ function status(t){ statusEl.textContent = t; }
 function startPreview(){
   if (!score.events.length){ status("Load a MIDI or MusicXML file first."); return; }
   if (mode !== "preview"){ setMode("preview"); }
+
   const ctx = ensureAudio();
   ctx.resume?.();
 
-  audio.isPlaying = true;
-  const now = ctx.currentTime;
+  // Reset playhead/scheduler pointer
+  if (audio.pauseAt <= 0) {
+    playhead.idx = 0;
+  } else {
+    // seek to beat at pause
+    const beatAtPause = secToBeats(Math.max(0, audio.pauseAt), score.bpm * tempoMul);
+    playhead.idx = seekIdxByBeat(beatAtPause);
+  }
 
+  audio.isPlaying = true;
+
+  const now = ctx.currentTime;
   const countInBeats = (Number(countInEl.value||0) || 0) * (4 / score.timeSig.den);
   const countInSec = scoreBeatToSec(countInBeats);
 
+  // Small scheduling lead helps iOS and prevents "first note missed".
+  const lead = 0.06;
+
   if (audio.pauseAt > 0){
-    playhead.startedAt = now - audio.pauseAt;
+    playhead.startedAt = (now + lead) - audio.pauseAt;
   }else{
-    playhead.startedAt = now + countInSec;
+    playhead.startedAt = now + lead + countInSec;
   }
 
   if (audio.schedTimer) clearInterval(audio.schedTimer);
@@ -522,26 +557,67 @@ function pausePreview(){
   status("Paused");
 }
 
+let metroState = { lastScheduledBeat: null };
+
+function playClick(when, strong=false){
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(strong ? 1200 : 900, when);
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(strong ? 0.6 : 0.35, when + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.03);
+  osc.connect(g);
+  g.connect(audio.master);
+  osc.start(when);
+  osc.stop(when + 0.04);
+}
+
+function seekIdxByBeat(beat){
+  // Find first event whose startBeat >= beat, but don't skip events at 0 due to tiny time drift.
+  for (let i=0;i<score.events.length;i++){
+    if (score.events[i].startBeat >= (beat - 0.02)) return i;
+  }
+  return score.events.length;
+}
+
 function schedulerTick(){
   if (!audio.isPlaying) return;
   const ctx = ensureAudio();
 
-  const lookahead = 0.12;
+  const lookahead = 0.16;
   const now = ctx.currentTime;
 
   const tSec = now - playhead.startedAt;
   const tBeat = secToBeats(Math.max(0, tSec), score.bpm * tempoMul);
 
-  while (playhead.idx < score.events.length){
-    const ev = score.events[playhead.idx];
-    const evStart = ev.startBeat;
-    if (evStart >= tBeat) break;
-    playhead.idx++;
+  // Metronome (preview mode only)
+  if (metroOnEl?.checked){
+    const beatsPerBar = score.timeSig.num;
+    const beatNow = tBeat;
+    const startBeat = Math.floor(beatNow);
+    const endBeat = Math.floor(beatNow + secToBeats(lookahead, score.bpm * tempoMul)) + 1;
+
+    if (metroState.lastScheduledBeat == null) metroState.lastScheduledBeat = startBeat - 1;
+
+    for (let b = metroState.lastScheduledBeat + 1; b <= endBeat; b++){
+      const when = playhead.startedAt + scoreBeatToSec(b);
+      if (when >= now - 0.01 && when <= now + lookahead + 0.02){
+        const isStrong = (b % beatsPerBar) === 0;
+        playClick(when, isStrong);
+        metroState.lastScheduledBeat = b;
+      }
+    }
+  } else {
+    metroState.lastScheduledBeat = null;
   }
 
+  // Schedule notes
   while (playhead.idx < score.events.length){
     const ev = score.events[playhead.idx];
     const evStartSec = playhead.startedAt + scoreBeatToSec(ev.startBeat);
+
     if (evStartSec > now + lookahead) break;
 
     if (ev.kind === "note"){
@@ -868,7 +944,16 @@ function drawFalling(){
     ctx.fillRect(pad + i*laneW, 0, laneW-2, H);
   }
 
-  const hitY = H * 0.72;
+  // Lane labels (string names)
+  ctx.fillStyle = "rgba(255,255,255,.75)";
+  ctx.font = `${Math.round(16*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+  ctx.textBaseline = "top";
+  for (let i=0;i<4;i++){
+    const x = pad + i*laneW + 10;
+    ctx.fillText(lanes[i].name, x, 10*(window.devicePixelRatio||1));
+  }
+
+  const hitY = H * 0.78;
   ctx.strokeStyle = "rgba(255,255,255,.22)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -963,9 +1048,12 @@ function durKind(beats){
 }
 
 function drawTrebleClef(x, y){
+  // y should be around the middle staff line for best alignment.
+  const dpr = (window.devicePixelRatio||1);
   sctx.save();
   sctx.fillStyle = "rgba(255,255,255,.92)";
-  sctx.font = `${Math.round(38*(window.devicePixelRatio||1))}px serif`;
+  sctx.font = `${Math.round(44*dpr)}px serif`;
+  sctx.textBaseline = "middle";
   sctx.fillText("𝄞", x, y);
   sctx.restore();
 }
@@ -998,7 +1086,7 @@ function drawSheet(){
     sctx.stroke();
   }
 
-  drawTrebleClef(padX + 2, staffBottomY + lineGap*0.25);
+  drawTrebleClef(padX + 6*(window.devicePixelRatio||1), staffTopY + 2*lineGap);
 
   if (!score.measures.length){
     sctx.fillStyle = "rgba(255,255,255,.7)";
