@@ -510,6 +510,33 @@ function resetPlayhead(){
 
 function status(t){ statusEl.textContent = t; }
 
+// --- Theme-aware drawing colors (so notes are readable in light theme) ---
+function isLightTheme(){
+  return (document.documentElement.dataset.theme || "").toLowerCase() === "light";
+}
+function staffInk(){
+  // Prefer CSS variables if present, else fall back.
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--staffInk").trim();
+  if (v) return v;
+  return isLightTheme() ? "rgba(16,18,28,.82)" : "rgba(255,255,255,.20)";
+}
+function noteInk(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--noteInk").trim();
+  if (v) return v;
+  return isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.92)";
+}
+function noteFillInk(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = cs.getPropertyValue("--noteFill").trim();
+  if (v) return v;
+  return isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.92)";
+}
+function noteHollowFill(){
+  return isLightTheme() ? "rgba(16,18,28,.06)" : "rgba(255,255,255,.06)";
+}
+
 function startPreview(){
   if (!score.events.length){ status("Load a MIDI or MusicXML file first."); return; }
   if (mode !== "preview"){ setMode("preview"); }
@@ -899,6 +926,20 @@ function micLoop(ts){
 }
 
 // ---------- Rendering ----------
+// Theme-aware ink colors for canvas drawing
+function themeIsLight(){
+  return (document.documentElement.dataset.theme || "").toLowerCase() === "light";
+}
+function ink(){
+  // Prefer CSS variable if present
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--ink").trim();
+  if (v) return v;
+  return themeIsLight() ? "rgba(10,16,28,.92)" : "rgba(255,255,255,.92)";
+}
+function inkSubtle(alphaDark=0.22, alphaLight=0.18){
+  const base = themeIsLight() ? `rgba(10,16,28,${alphaLight})` : `rgba(255,255,255,${alphaDark})`;
+  return base;
+}
 function resizeCanvasToDisplaySize(c, minH=260){
   const dpr = window.devicePixelRatio || 1;
   const rect = c.getBoundingClientRect();
@@ -978,7 +1019,17 @@ function drawFalling(){
 
     const dyBeats = ev.startBeat - bNow;
     const y = hitY - dyBeats * (H * 0.22);
-    const rectH = Math.max(44, Math.min(72, ev.durBeat * 60));
+    // Height reflects duration (longer notes look taller), but keep short notes readable.
+    const k = durKind(ev.durBeat);
+    const base = 56; // treat 1/16 as our baseline size (roughly what quarter used to feel like)
+    let rectH =
+      (k === "sixteenth") ? base :
+      (k === "eighth")    ? base + 6 :
+      (k === "quarter")   ? base + 14 :
+      (k === "half")      ? base + 30 :
+      (k === "whole")     ? base + 44 :
+      base + 14;
+    rectH = Math.max(52, Math.min(120, rectH));
 
     let fill = "rgba(200,200,200,.28)";
     if (Math.abs(dyBeats) < 0.12) fill = "rgba(91,140,255,.80)";
@@ -988,16 +1039,20 @@ function drawFalling(){
     roundRect(ctx, x, y - rectH/2, w, rectH, 14);
     ctx.fill();
 
-    ctx.fillStyle = "rgba(255,255,255,.95)";
+    ctx.fillStyle = isLightTheme() ? "rgba(16,18,28,.92)" : "rgba(255,255,255,.95)";
     ctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
     const name = midiToName(ev.midi);
     const fing = violinFingerForMidi(ev.midi);
 
     const ty = y - 4;
+    // Note name left, finger hint right for readability on phones
+    ctx.textAlign = "left";
     ctx.fillText(name, x + 12, ty);
     ctx.globalAlpha = 0.92;
-    ctx.fillText(`${fing.string} ${fing.finger}`, x + 12, ty + 18);
+    ctx.textAlign = "right";
+    ctx.fillText(`${fing.string} ${fing.finger}`, x + w - 12, ty);
     ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
   }
 }
 
@@ -1051,15 +1106,16 @@ function drawTrebleClef(x, y){
   // y should be around the middle staff line for best alignment.
   const dpr = (window.devicePixelRatio||1);
   sctx.save();
-  sctx.fillStyle = "rgba(255,255,255,.92)";
+  sctx.fillStyle = ink();
   sctx.font = `${Math.round(44*dpr)}px serif`;
   sctx.textBaseline = "middle";
   sctx.fillText("𝄞", x, y);
   sctx.restore();
 }
 
+
 function drawSheet(){
-  resizeCanvasToDisplaySize(sheetCanvas, 260);
+  resizeCanvasToDisplaySize(sheetCanvas, 320);
   const W = sheetCanvas.width, H = sheetCanvas.height;
   sctx.clearRect(0,0,W,H);
 
@@ -1070,167 +1126,221 @@ function drawSheet(){
     return;
   }
 
-  const padX = 18 * (window.devicePixelRatio||1);
-  const padY = 18 * (window.devicePixelRatio||1);
-  const lineGap = 14 * (window.devicePixelRatio||1);
-  const staffTopY = padY + 18*(window.devicePixelRatio||1);
-  const staffBottomY = staffTopY + 4*lineGap;
+  const dpr = (window.devicePixelRatio||1);
+  const padX = 18 * dpr;
+  const padY = 16 * dpr;
 
-  sctx.strokeStyle = "rgba(255,255,255,.20)";
-  sctx.lineWidth = 2;
-  for (let i=0;i<5;i++){
-    const y = staffTopY + i*lineGap;
-    sctx.beginPath();
-    sctx.moveTo(padX, y);
-    sctx.lineTo(W-padX, y);
-    sctx.stroke();
-  }
+  // Staff sizing (fill vertical space better; 3 systems)
+  const systems = 3;
+  const systemGap = 22 * dpr;
+  const staffLineGap = 12.5 * dpr;      // distance between staff lines
+  const staffHeight = 4 * staffLineGap; // 5 lines -> 4 gaps
+  const systemHeight = staffHeight + 30 * dpr; // include some headroom for stems/ledger/labels
 
-  drawTrebleClef(padX + 6*(window.devicePixelRatio||1), staffTopY + 2*lineGap);
+  const totalH = systems*systemHeight + (systems-1)*systemGap;
+  const top = padY + Math.max(0, (H - totalH) * 0.10); // small centering bias
+  const clefW = 52 * dpr;
 
+  // Beats/measure window: 3 rows, 2 measures each (total 6 measures)
   if (!score.measures.length){
-    sctx.fillStyle = "rgba(255,255,255,.7)";
-    sctx.font = `${Math.round(14*(window.devicePixelRatio||1))}px system-ui`;
-    sctx.fillText("Load a MIDI or MusicXML file to see notes.", padX + 52*(window.devicePixelRatio||1), staffTopY + 2*lineGap);
+    const staffTopY = top + 18*dpr;
+    const staffBottomY = staffTopY + staffHeight;
+    sctx.strokeStyle = inkSubtle(0.20, 0.20);
+    sctx.lineWidth = 2;
+    for (let si=0; si<systems; si++){
+      const y0 = staffTopY + si*(systemHeight+systemGap);
+      for (let i=0;i<5;i++){
+        const y = y0 + i*staffLineGap;
+        sctx.beginPath();
+        sctx.moveTo(padX, y);
+        sctx.lineTo(W-padX, y);
+        sctx.stroke();
+      }
+      drawTrebleClef(padX + 2, y0 + staffHeight/2);
+    }
+    sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.72)" : "rgba(255,255,255,.72)";
+    sctx.font = `${Math.round(14*dpr)}px system-ui`;
+    sctx.fillText("Load a MIDI or MusicXML file to see notes.", padX + clefW, staffTopY + 2*staffLineGap);
     return;
   }
 
   const bNow = (mode==="preview" && audio.isPlaying) ? nowPlayBeat() : 0;
   const mLen = beatsPerMeasure(score.timeSig);
   const curMeasureIdx = Math.max(0, Math.min(score.measures.length-1, Math.floor(bNow / mLen)));
-  const m0 = score.measures[curMeasureIdx];
-  const m1 = score.measures[Math.min(score.measures.length-1, curMeasureIdx+1)];
 
-  const windowMeasures = [m0, m1];
+  // Build 6-measure window
+  const windowMeasures = [];
+  for (let k=0;k<6;k++){
+    windowMeasures.push(score.measures[Math.min(score.measures.length-1, curMeasureIdx + k)]);
+  }
 
-  const clefW = 52*(window.devicePixelRatio||1);
+  // Geometry per system
   const usableW = (W - padX*2 - clefW);
   const measureW = usableW / 2;
   const x0 = padX + clefW;
 
-  sctx.strokeStyle = "rgba(255,255,255,.25)";
-  sctx.lineWidth = 2;
-  for (let i=0;i<3;i++){
-    const x = x0 + i*measureW;
-    sctx.beginPath();
-    sctx.moveTo(x, staffTopY);
-    sctx.lineTo(x, staffBottomY);
-    sctx.stroke();
-  }
+  // Draw each system
+  for (let sys=0; sys<systems; sys++){
+    const rowMeasures = windowMeasures.slice(sys*2, sys*2+2);
 
-  for (let mi=0; mi<2; mi++){
-    const m = windowMeasures[mi];
-    const baseX = x0 + mi*measureW;
-    const beatSpan = mLen;
+    const staffTopY = top + 18*dpr + sys*(systemHeight + systemGap);
+    const staffBottomY = staffTopY + staffHeight;
 
-    const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
-    const xForBeat = (beat) => baseX + ( (beat - m.startBeat) / beatSpan ) * (measureW - 14*(window.devicePixelRatio||1)) + 8*(window.devicePixelRatio||1);
-
-    for (const ev of evs){
-      const x = xForBeat(ev.startBeat);
-
-      if (ev.kind === "rest"){
-        sctx.fillStyle = "rgba(255,255,255,.75)";
-        sctx.font = `${Math.round(18*(window.devicePixelRatio||1))}px serif`;
-        const k = durKind(ev.durBeat);
-        const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
-        sctx.fillText(glyph, x, staffTopY + 3.1*lineGap);
-        continue;
-      }
-
-      const y = staffYForMidi(ev.midi, staffBottomY, lineGap);
-
-      const kind = durKind(ev.durBeat);
-      const filled = !(kind==="whole" || kind==="half");
-      const headW = 14*(window.devicePixelRatio||1);
-      const headH = 10*(window.devicePixelRatio||1);
-
-      sctx.save();
-      sctx.translate(x, y);
-      sctx.rotate(-0.35);
-      sctx.strokeStyle = "rgba(255,255,255,.92)";
-      sctx.lineWidth = 2;
-      sctx.fillStyle = filled ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.06)";
+    // staff lines
+    sctx.strokeStyle = inkSubtle(0.20, 0.20);
+    sctx.lineWidth = 2;
+    for (let i=0;i<5;i++){
+      const y = staffTopY + i*staffLineGap;
       sctx.beginPath();
-      sctx.ellipse(0, 0, headW/2, headH/2, 0, 0, Math.PI*2);
-      sctx.fill();
+      sctx.moveTo(padX, y);
+      sctx.lineTo(W-padX, y);
       sctx.stroke();
-      sctx.restore();
+    }
 
-      const st = midiToStepOct(ev.midi);
-      if (st.accidental){
-        sctx.fillStyle = "rgba(255,255,255,.86)";
-        sctx.font = `${Math.round(16*(window.devicePixelRatio||1))}px system-ui`;
-        sctx.fillText(st.accidental, x - 18*(window.devicePixelRatio||1), y + 6*(window.devicePixelRatio||1));
-      }
+    // treble clef (aligned to middle of staff)
+    drawTrebleClef(padX + 2, staffTopY + staffHeight/2);
 
-      if (kind !== "whole"){
-        const stemUp = (y > staffTopY + 2*lineGap);
-        sctx.strokeStyle = "rgba(255,255,255,.92)";
+    // barlines (2 measures per system)
+    sctx.strokeStyle = inkSubtle(0.25, 0.22);
+    sctx.lineWidth = 2;
+    for (let i=0;i<3;i++){
+      const x = x0 + i*measureW;
+      sctx.beginPath();
+      sctx.moveTo(x, staffTopY);
+      sctx.lineTo(x, staffBottomY);
+      sctx.stroke();
+    }
+
+    // Draw notes/rests in the two measures
+    for (let mi=0; mi<2; mi++){
+      const m = rowMeasures[mi];
+      const baseX = x0 + mi*measureW;
+      const beatSpan = mLen;
+
+      const xForBeat = (beat) => baseX + ((beat - m.startBeat) / beatSpan) * (measureW - 14*dpr) + 8*dpr;
+      const evs = (m.events||[]).slice().sort((a,b)=>a.startBeat-b.startBeat);
+
+      for (const ev of evs){
+        const x = xForBeat(ev.startBeat);
+
+        if (ev.kind === "rest"){
+          sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.75)" : "rgba(255,255,255,.75)";
+          sctx.font = `${Math.round(18*dpr)}px serif`;
+          const k = durKind(ev.durBeat);
+          const glyph = (k==="whole")?"𝄻":(k==="half")?"𝄼":(k==="quarter")?"𝄽":(k==="eighth")?"𝄾":"𝄿";
+          sctx.textBaseline = "middle";
+          sctx.fillText(glyph, x, staffTopY + staffHeight*0.55);
+          continue;
+        }
+
+        const y = staffYForMidi(ev.midi, staffBottomY, staffLineGap);
+
+        const kind = durKind(ev.durBeat);
+        const filled = !(kind==="whole" || kind==="half");
+        const headW = 14*dpr;
+        const headH = 10*dpr;
+
+        // notehead
+        sctx.save();
+        sctx.translate(x, y);
+        sctx.rotate(-0.35);
+        sctx.strokeStyle = ink();
         sctx.lineWidth = 2;
-
-        const stemX = x + (stemUp ? (headW/2) : -(headW/2));
-        const stemLen = 38*(window.devicePixelRatio||1);
-        const y1 = y;
-        const y2 = stemUp ? (y - stemLen) : (y + stemLen);
-
+        sctx.fillStyle = filled ? ink() : (themeIsLight() ? "rgba(10,16,28,.08)" : "rgba(255,255,255,.06)");
         sctx.beginPath();
-        sctx.moveTo(stemX, y1);
-        sctx.lineTo(stemX, y2);
+        sctx.ellipse(0, 0, headW/2, headH/2, 0, 0, Math.PI*2);
+        sctx.fill();
         sctx.stroke();
+        sctx.restore();
 
-        if (kind === "eighth" || kind === "sixteenth"){
-          const dir = stemUp ? -1 : 1;
-          const fx = stemX;
-          const fy = y2;
+        // accidental
+        const st = midiToStepOct(ev.midi);
+        if (st.accidental){
+          sctx.fillStyle = themeIsLight() ? "rgba(10,16,28,.86)" : "rgba(255,255,255,.86)";
+          sctx.font = `${Math.round(16*dpr)}px system-ui`;
+          sctx.textBaseline = "alphabetic";
+          sctx.fillText(st.accidental, x - 18*dpr, y + 6*dpr);
+        }
+
+        // stem + flags
+        if (kind !== "whole"){
+          const stemUp = (y > staffTopY + 2*staffLineGap);
+          sctx.strokeStyle = ink();
+          sctx.lineWidth = 2;
+
+          const stemX = x + (stemUp ? (headW/2) : -(headW/2));
+          const stemLen = 38*dpr;
+          const y1 = y;
+          const y2 = stemUp ? (y - stemLen) : (y + stemLen);
 
           sctx.beginPath();
-          sctx.moveTo(fx, fy);
-          sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy + 6*dir, fx + 6*(window.devicePixelRatio||1), fy + 14*dir);
+          sctx.moveTo(stemX, y1);
+          sctx.lineTo(stemX, y2);
           sctx.stroke();
 
-          if (kind === "sixteenth"){
-            const fy2 = fy + 10*dir;
+          if (kind === "eighth" || kind === "sixteenth"){
+            const dir = stemUp ? -1 : 1;
+            const fx = stemX;
+            const fy = y2;
+
             sctx.beginPath();
-            sctx.moveTo(fx, fy2);
-            sctx.quadraticCurveTo(fx + 10*(window.devicePixelRatio||1), fy2 + 6*dir, fx + 6*(window.devicePixelRatio||1), fy2 + 14*dir);
+            sctx.moveTo(fx, fy);
+            sctx.quadraticCurveTo(fx + 10*dpr, fy + 6*dir, fx + 6*dpr, fy + 14*dir);
+            sctx.stroke();
+
+            if (kind === "sixteenth"){
+              const fy2 = fy + 10*dir;
+              sctx.beginPath();
+              sctx.moveTo(fx, fy2);
+              sctx.quadraticCurveTo(fx + 10*dpr, fy2 + 6*dir, fx + 6*dpr, fy2 + 14*dir);
+              sctx.stroke();
+            }
+          }
+        }
+
+        // ledger lines (keep)
+        const yMin = staffTopY;
+        const yMax = staffBottomY;
+        sctx.strokeStyle = inkSubtle(0.20, 0.20);
+        sctx.lineWidth = 2;
+        if (y < yMin){
+          for (let ly = yMin - staffLineGap; ly >= y; ly -= staffLineGap){
+            sctx.beginPath();
+            sctx.moveTo(x - 10*dpr, ly);
+            sctx.lineTo(x + 10*dpr, ly);
+            sctx.stroke();
+          }
+        } else if (y > yMax){
+          for (let ly = yMax + staffLineGap; ly <= y; ly += staffLineGap){
+            sctx.beginPath();
+            sctx.moveTo(x - 10*dpr, ly);
+            sctx.lineTo(x + 10*dpr, ly);
             sctx.stroke();
           }
         }
       }
+    }
 
-      const yMin = staffTopY;
-      const yMax = staffBottomY;
-      sctx.strokeStyle = "rgba(255,255,255,.20)";
-      sctx.lineWidth = 2;
-      if (y < yMin){
-        for (let ly = yMin - lineGap; ly >= y; ly -= lineGap){
-          sctx.beginPath();
-          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
-          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
-          sctx.stroke();
-        }
-      } else if (y > yMax){
-        for (let ly = yMax + lineGap; ly <= y; ly += lineGap){
-          sctx.beginPath();
-          sctx.moveTo(x - 10*(window.devicePixelRatio||1), ly);
-          sctx.lineTo(x + 10*(window.devicePixelRatio||1), ly);
-          sctx.stroke();
-        }
+    // Caret only on first system, moving through its two measures
+    if (sys === 0 && mode==="preview" && audio.isPlaying){
+      const m0 = rowMeasures[0];
+      const m1 = rowMeasures[1];
+      let caretX = x0;
+      if (bNow < m1.startBeat){
+        caretX = x0 + ((bNow - m0.startBeat) / mLen) * measureW;
+      }else{
+        caretX = x0 + measureW + ((bNow - m1.startBeat) / mLen) * measureW;
       }
+      sctx.strokeStyle = "rgba(91,140,255,.9)";
+      sctx.lineWidth = 3;
+      sctx.beginPath();
+      sctx.moveTo(caretX, staffTopY - 10*dpr);
+      sctx.lineTo(caretX, staffBottomY + 10*dpr);
+      sctx.stroke();
     }
   }
-
-  if (mode==="preview" && audio.isPlaying){
-    const xCaret = x0 + ( (bNow - m0.startBeat) / mLen ) * measureW;
-    sctx.strokeStyle = "rgba(91,140,255,.9)";
-    sctx.lineWidth = 3;
-    sctx.beginPath();
-    sctx.moveTo(xCaret, staffTopY - 10*(window.devicePixelRatio||1));
-    sctx.lineTo(xCaret, staffBottomY + 10*(window.devicePixelRatio||1));
-    sctx.stroke();
-  }
 }
+
 
 // ---------- Animation loop ----------
 function renderLoop(){
