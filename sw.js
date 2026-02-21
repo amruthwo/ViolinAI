@@ -3,7 +3,7 @@ const CACHE = "violinai-v15.1.0";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=15",
+  "./app.js?v=15.1",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
