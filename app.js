@@ -91,7 +91,7 @@ function persistSettings(){
   if (d) document.documentElement.dataset.design = d;
   designSelect.value = document.documentElement.dataset.design || "auto";
   applyThemeButtonLabel();
-}
+})();
 // --- Melody-only mode (helps with chords / multi-voice scores) ---
 let melodyOnly = (localStorage.getItem("va_melodyOnly") || "1") === "1";
 
