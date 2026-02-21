@@ -118,7 +118,7 @@ function attachRipple(el){
 document.querySelectorAll(".ripple").forEach(attachRipple);
 
 // --- Mic state must be defined before setMode() can call stopMic() ---
-let mic = {
+var mic = {
   stream: null,
   ctx: null,
   src: null,
