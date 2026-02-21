@@ -1,5 +1,7 @@
 /* app.js — ViolinAI v15 */
 
+const $ = (id) => document.getElementById(id);
+
 
 // --- Mic state (window-scoped to avoid module TDZ issues) ---
 window.mic = window.mic || {
@@ -21,8 +23,6 @@ window.mic = window.mic || {
   lastAdvanceAt: 0
 };
 
-const $ = (id) => document.getElementById(id);
-
 
 // Safe canvas aliases (avoid TDZ by only touching window.*)
 (function ensureCanvasAliases(){
@@ -37,15 +37,24 @@ const $ = (id) => document.getElementById(id);
     }
     if (!window.sheetCanvas){
       window.sheetCanvas =
-        document.getElementById("window.sheetCanvas") ||
+        document.getElementById("sheetCanvas") ||
         document.getElementById("sheet") ||
         document.querySelector("canvas#sheet");
     }
   }catch(e){ /* ignore */ }
 })();
-// Safe canvas contexts
-window.fallingCtx = window.fallingCtx || (window.fallingCanvas ? window.fallingCanvas.getContext("2d") : null);
-window.sheetCtx   = window.sheetCtx   || (window.sheetCanvas   ? window.sheetCanvas.getContext("2d")   : null);
+// Ensure canvas contexts exist
+let fallingCtx = null;
+let sheetCtx = null;
+function ensureCanvasContexts(){
+  if (window.fallingCanvas && !fallingCtx){
+    fallingCtx = window.fallingCanvas.getContext("2d");
+  }
+  if (window.sheetCanvas && !sheetCtx){
+    sheetCtx = window.sheetCanvas.getContext("2d");
+  }
+}
+ensureCanvasContexts();
 // UI
 const openBtn = $("openBtn");
 const scoreFile = $("scoreFile");
@@ -94,8 +103,8 @@ const statusEl = $("status");
 const canvas = $("canvas");
 const ctx = canvas.getContext("2d");
 
-const sheetCanvas = $("window.sheetCanvas");
-const sctx = window.sheetCanvas.getContext("2d");
+const sheetCanvas = $("sheetCanvas");
+const sctx = sheetCanvas.getContext("2d");
 
 // Register SW
 (async () => {
@@ -875,6 +884,24 @@ pauseBtn.addEventListener("click", pausePreview);
 stopBtn.addEventListener("click", () => { stopAll(); stopMic(); });
 
 // ---------- Learn Mode (Mic pitch detection + latch) ----------
+let mic = {
+  stream: null,
+  ctx: null,
+  src: null,
+  analyser: null,
+  buf: null,
+  raf: null,
+
+  freq: 0,
+  clarity: 0,
+  rms: 0,
+
+  latched: false,
+  stableMs: 0,
+  releaseMs: 0,
+  lastFrameTs: 0,
+  lastAdvanceAt: 0
+};
 
 micBtn.addEventListener("click", async () => {
   if (mode !== "learn") setMode("learn");
@@ -928,16 +955,16 @@ function stopMic(){
   const mic = window.mic;
   if (!mic) return;
 
-  if (window.mic.raf) cancelAnimationFrame(window.mic.raf);
-  window.mic.raf = null;
+  if (mic.raf) cancelAnimationFrame(mic.raf);
+  mic.raf = null;
 
-  if (window.mic.stream){
-    window.mic.stream.getTracks().forEach(t => t.stop());
-    window.mic.stream = null;
+  if (mic.stream){
+    mic.stream.getTracks().forEach(t => t.stop());
+    mic.stream = null;
   }
-  if (window.mic.ctx){
-    window.mic.ctx.close?.();
-    window.mic.ctx = null;
+  if (mic.ctx){
+    mic.ctx.close?.();
+    mic.ctx = null;
   }
 
   if (typeof micStatusTxt !== "undefined" && micStatusTxt) micStatusTxt.textContent = "Mic stopped";
@@ -1163,11 +1190,11 @@ function laneForMidi(m){
 function drawFalling(){
   const canvas = window.fallingCanvas;
   if (!canvas) return;
-  const ctx = window.fallingCtx || canvas.getContext('2d');
-  window.fallingCtx = ctx;
-  if (!ctx) return;
-  const W = canvas.width;
-  const H = canvas.height;
+  ensureCanvasContexts();
+  if (!fallingCtx) return;
+  // Falling view with sustain-length rectangles (duration-true) and clearer labels.
+  resizeCanvasToDisplaySize(canvas, 360);
+  const W = canvas.width, H = canvas.height;
   ctx.clearRect(0,0,W,H);
 
   if (!showFalling.checked){
@@ -1317,9 +1344,13 @@ function drawTrebleClef(x, y){
 
 
 function drawSheet(){
+  ensureCanvasContexts();
+  const canvas = window.sheetCanvas;
+  const sctx = sheetCtx;
+  if (!canvas || !sctx) return;
   // 3 systems (rows), 2 measures per row. Caret moves across full top row; paging happens per row.
-  resizeCanvasToDisplaySize(window.sheetCanvas, 340);
-  const W = window.sheetCanvas.width, H = window.sheetCanvas.height;
+  resizeCanvasToDisplaySize(canvas, 340);
+  const W = canvas.width, H = canvas.height;
   sctx.clearRect(0,0,W,H);
 
   if (!showSheet.checked){
